@@ -20,7 +20,7 @@ defmodule FastApi.MixProject do
   def application do
     [
       mod: {FastApi.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :mongodb, :runtime_tools]
     ]
   end
 
