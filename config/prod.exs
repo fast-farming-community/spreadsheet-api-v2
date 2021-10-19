@@ -16,6 +16,10 @@ config :fast_api, FastApiWeb.Endpoint,
 # Do not print debug messages in production
 config :logger, level: :info
 
+config :fast_api,
+  db_uname: {:system, "MONGO_USERNAME", default: nil},
+  db_password: {:system, "MONGO_PASSWORD", default: nil}
+
 # ## SSL Support
 #
 # To get SSL working, you will need to add the `https` key

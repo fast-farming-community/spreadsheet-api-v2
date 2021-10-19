@@ -20,7 +20,7 @@ defmodule FastApi.MixProject do
   def application do
     [
       mod: {FastApi.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :mongodb, :runtime_tools]
     ]
   end
 
@@ -33,6 +33,7 @@ defmodule FastApi.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:mongodb, "~> 0.5.1"},
       {:phoenix, "~> 1.6.2"},
       {:phoenix_live_dashboard, "~> 0.5"},
       {:swoosh, "~> 1.3"},
