@@ -28,6 +28,11 @@ defmodule FastApiWeb.Endpoint do
     plug Phoenix.CodeReloader
   end
 
+  # Allow CORS during development
+  if Mix.env() == :dev do
+    plug CORSPlug
+  end
+
   plug Phoenix.LiveDashboard.RequestLogger,
     param_key: "request_logger",
     cookie_key: "request_logger"

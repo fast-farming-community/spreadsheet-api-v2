@@ -33,6 +33,7 @@ defmodule FastApi.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:cors_plug, "~> 2.0"},
       {:mongodb, "~> 0.5.1"},
       {:phoenix, "~> 1.6.2"},
       {:phoenix_live_dashboard, "~> 0.5"},
