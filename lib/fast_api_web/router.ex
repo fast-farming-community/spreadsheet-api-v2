@@ -5,8 +5,17 @@ defmodule FastApiWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/api", FastApiWeb do
+  scope "/api/v1", FastApiWeb do
     pipe_through :api
+
+    get "/metadata", MetaController, :index
+    get "/metadata/indexes", MetaController, :index
+
+    get "/details/:category/:item", DetailController, :index
+    get "/details/:module/:collection/:item", DetailController, :get_item_page
+
+    get "/:module/:collection", FeatureController, :get_page
+    get "/:module/:collection/:item", FeatureController, :get_item
   end
 
   # Enables LiveDashboard only for development
