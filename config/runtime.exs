@@ -20,6 +20,7 @@ if config_env() == :prod do
       """
 
   config :fast_api, FastApiWeb.Endpoint,
+    server: true,
     http: [
       # Enable IPv6 and bind on all interfaces.
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
@@ -29,6 +30,10 @@ if config_env() == :prod do
       port: String.to_integer(System.get_env("PORT") || "4000")
     ],
     secret_key_base: secret_key_base
+
+  config :fast_api,
+    mongo_uname: System.get_env("MONGO_USERNAME"),
+    mongo_password: System.get_env("MONGO_PASSWORD")
 
   # ## Using releases
   #

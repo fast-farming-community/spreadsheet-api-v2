@@ -25,9 +25,9 @@ config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
 # Mongo configuration
 config :fast_api,
-  db_url: "localhost:27017",
-  db_uname: nil,
-  db_password: nil
+  mongo_url: "localhost:27017",
+  mongo_uname: nil,
+  mongo_password: nil
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false
