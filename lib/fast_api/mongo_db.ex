@@ -43,9 +43,9 @@ defmodule FastApi.MongoDB do
   end
 
   defp url() do
-    username = Application.fetch_env!(:fast_api, :db_uname)
-    password = Application.fetch_env!(:fast_api, :db_password)
-    url = Application.fetch_env!(:fast_api, :db_url)
+    username = Application.fetch_env!(:fast_api, :mongo_uname)
+    password = Application.fetch_env!(:fast_api, :mongo_password)
+    url = Application.fetch_env!(:fast_api, :mongo_url)
 
     ~s(mongodb://#{if(username || password, do: username <> ":" <> password <> "@")}#{url})
   end
