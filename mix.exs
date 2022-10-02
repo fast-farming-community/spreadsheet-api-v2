@@ -5,9 +5,9 @@ defmodule FastApi.MixProject do
     [
       app: :fast_api,
       version: "0.1.0",
-      elixir: "~> 1.12",
+      elixir: "~> 1.11",
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [:gettext] ++ Mix.compilers(),
+      compilers: Mix.compilers(),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps()
@@ -34,15 +34,17 @@ defmodule FastApi.MixProject do
   defp deps do
     [
       {:cors_plug, "~> 2.0"},
+      {:gettext, "~> 0.18"},
+      {:httpoison, "~> 1.8"},
+      {:jason, "~> 1.2"},
       {:mongodb, "~> 0.5.1"},
       {:phoenix, "~> 1.6.2"},
       {:phoenix_live_dashboard, "~> 0.5"},
+      {:plug_cowboy, "~> 2.5"},
+      {:reverse_proxy_plug, "~> 2.1"},
       {:swoosh, "~> 1.3"},
       {:telemetry_metrics, "~> 0.6"},
       {:telemetry_poller, "~> 1.0"},
-      {:gettext, "~> 0.18"},
-      {:jason, "~> 1.2"},
-      {:plug_cowboy, "~> 2.5"}
     ]
   end
 

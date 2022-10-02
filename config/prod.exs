@@ -11,8 +11,11 @@ import Config
 # before starting your production server.
 config :fast_api, FastApiWeb.Endpoint,
   url: [host: "api.farming-community.eu", port: 40000],
-  https: [port: 442, cipher_suite: :strong],
   cache_static_manifest: "priv/static/cache_manifest.json"
+
+config :cors_plug,
+  origin: ["https://fast.farming-community.eu"],
+  methods: ["GET"]
 
 # Do not print debug messages in production
 config :logger, level: :info

@@ -5,6 +5,16 @@ defmodule FastApiWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :cms do
+    plug :add_authorization_header
+  end
+
+  scope "/api/v1/cms" do
+    pipe_through :cms
+
+    forward "/", ReverseProxyPlug, upstream: Application.fetch_env!(:fast_api, :cockpit_url)
+  end
+
   scope "/api/v1", FastApiWeb do
     pipe_through :api
 
@@ -16,6 +26,14 @@ defmodule FastApiWeb.Router do
 
     get "/:module/:collection", FeatureController, :get_page
     get "/:module/:collection/:item", FeatureController, :get_item
+  end
+
+  defp add_authorization_header(conn, _) do
+    Plug.Conn.put_req_header(
+      conn,
+      "Authorization",
+      "Bearer #{Application.fetch_env!(:fast_api, :cockpit_token)}"
+    )
   end
 
   # Enables LiveDashboard only for development
