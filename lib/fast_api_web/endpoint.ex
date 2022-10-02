@@ -10,8 +10,6 @@ defmodule FastApiWeb.Endpoint do
     signing_salt: "l+Hp/RKj"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
-
   # Serve at "/" the static files from "priv/static" directory.
   #
   # You should set gzip to true if you are running phx.digest
@@ -30,10 +28,6 @@ defmodule FastApiWeb.Endpoint do
 
   # Allow CORS during development
   plug CORSPlug
-
-  plug Phoenix.LiveDashboard.RequestLogger,
-    param_key: "request_logger",
-    cookie_key: "request_logger"
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]

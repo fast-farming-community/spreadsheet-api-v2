@@ -25,11 +25,14 @@ config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
 # Mongo configuration
 config :fast_api,
-  cockpit_token: System.get_env("COCKPIT_TOKEN"),
-  cockpit_url: "https://fast.farming-community.eu/cockpit/api/collections/get/",
-  mongo_url: "0.0.0.0:27017",
+  mongo_url: "localhost:27017/?poolSize=5&w=majority",
   mongo_uname: nil,
   mongo_password: nil
+
+# CMS configuration
+config :fast_api,
+  cockpit_token: System.get_env("COCKPIT_TOKEN"),
+  cockpit_url: "https://fast.farming-community.eu/cockpit/api/collections/get/"
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false
