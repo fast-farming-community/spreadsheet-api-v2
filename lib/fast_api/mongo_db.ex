@@ -5,26 +5,23 @@ defmodule FastApi.MongoDB do
     with {:ok, conn} <- Mongo.start_link(url: url(), database: database) do
       cursor = Mongo.find(conn, collection, %{})
 
-      cursor
-      |> Enum.to_list()
+      Enum.to_list(cursor)
     end
   end
 
   def get_page(database, collection) do
-    with {:ok, conn} <- Mongo.start_link(hostname: "localhost", database: database) do
+    with {:ok, conn} <- Mongo.start_link(url: url(), database: database) do
       cursor = Mongo.aggregate(conn, collection, MongoPipelines.build_page_document())
 
-      cursor
-      |> Enum.to_list()
+      Enum.to_list(cursor)
     end
   end
 
   def get_item_by_key(database, collection, key) do
-    with {:ok, conn} <- Mongo.start_link(hostname: "localhost", database: database) do
+    with {:ok, conn} <- Mongo.start_link(url: url(), database: database) do
       result = Mongo.find_one(conn, collection, %{"Key" => key})
 
-      result
-      |> Enum.into(%{})
+      Enum.into(result, %{})
     end
   end
 
@@ -36,10 +33,7 @@ defmodule FastApi.MongoDB do
     item = get_item_by_key(database, collection, key)
     list = get_item_details(Map.get(item, "Category"), Map.get(item, "Key"))
 
-    %{
-      "detail" => item,
-      "list" => list
-    }
+    %{"detail" => item, "list" => list}
   end
 
   defp url() do

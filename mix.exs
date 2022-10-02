@@ -39,7 +39,6 @@ defmodule FastApi.MixProject do
       {:jason, "~> 1.2"},
       {:mongodb, "~> 0.5.1"},
       {:phoenix, "~> 1.6.2"},
-      {:phoenix_live_dashboard, "~> 0.5"},
       {:plug_cowboy, "~> 2.5"},
       {:reverse_proxy_plug, "~> 2.1"},
       {:swoosh, "~> 1.3"},
