@@ -25,7 +25,7 @@ config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
 # Mongo configuration
 config :fast_api,
-  mongo_url: "localhost:27017/?poolSize=5&w=majority",
+  mongo_host: "localhost",
   mongo_uname: nil,
   mongo_password: nil
 
