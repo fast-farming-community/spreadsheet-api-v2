@@ -34,16 +34,23 @@ defmodule FastApi.MixProject do
   defp deps do
     [
       {:cors_plug, "~> 2.0"},
+      {:ecto_sql, "~> 3.6"},
+      {:floki, ">= 0.30.0", only: :test},
       {:gettext, "~> 0.18"},
-      {:httpoison, "~> 1.8"},
       {:jason, "~> 1.2"},
-      {:mongodb, "~> 0.5.1"},
-      {:phoenix, "~> 1.6.2"},
+      {:mongodb, github: "elixir-mongo/mongodb"},
+      {:phoenix, "~> 1.6.13"},
+      {:phoenix_ecto, "~> 4.4"},
+      {:phoenix_html, "~> 3.0"},
+      {:phoenix_live_dashboard, "~> 0.6"},
+      {:phoenix_live_reload, "~> 1.2", only: :dev},
+      {:phoenix_live_view, "~> 0.17.5"},
       {:plug_cowboy, "~> 2.5"},
+      {:postgrex, ">= 0.0.0"},
       {:reverse_proxy_plug, "~> 2.1"},
       {:swoosh, "~> 1.3"},
       {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"}
     ]
   end
 
@@ -55,7 +62,10 @@ defmodule FastApi.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get"]
+      setup: ["deps.get", "ecto.setup"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
     ]
   end
 end

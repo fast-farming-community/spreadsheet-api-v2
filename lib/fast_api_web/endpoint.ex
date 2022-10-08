@@ -7,7 +7,7 @@ defmodule FastApiWeb.Endpoint do
   @session_options [
     store: :cookie,
     key: "_fast_api_key",
-    signing_salt: "l+Hp/RKj"
+    signing_salt: "uQ39CwOK"
   ]
 
   # Serve at "/" the static files from "priv/static" directory.
@@ -24,6 +24,7 @@ defmodule FastApiWeb.Endpoint do
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
     plug Phoenix.CodeReloader
+    plug Phoenix.Ecto.CheckRepoStatus, otp_app: :fast_api
   end
 
   # Allow CORS during development

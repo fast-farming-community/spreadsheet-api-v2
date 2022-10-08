@@ -8,6 +8,7 @@ defmodule FastApi.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      FastApi.Repo,
       # Start the Telemetry supervisor
       FastApiWeb.Telemetry,
       # Start the PubSub system
