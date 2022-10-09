@@ -1,11 +1,22 @@
 import Config
 
+# Configure your database
+config :fast_api, FastApi.Repo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "fast_api_dev",
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 10
+
+config :fast_api,
+  mongo_host: "localhost:27017",
+  mongo_uname: "mongo",
+  mongo_password: "mongo"
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
-#
-# The watchers configuration can be used to run external
-# watchers to your application. For example, we use it
-# with esbuild to bundle .js and .css sources.
 config :fast_api, FastApiWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
@@ -13,7 +24,7 @@ config :fast_api, FastApiWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "V6mgya0Gury7rWJPMfFlhQWRS3jxqeii1YSWZ5Krkqi+RTZwvtUGht/LUdW3iQ1M",
+  secret_key_base: "yxwt7JC4UkmUV307Qu2gjS+RgMisRtcdCruJUNwQrXRafqPuGb7ZXPzx9e8RmsaO",
   watchers: []
 
 # ## SSL Support
@@ -39,6 +50,17 @@ config :fast_api, FastApiWeb.Endpoint,
 # If desired, both `http:` and `https:` keys can be
 # configured to run both http and https servers on
 # different ports.
+
+# Watch static and templates for browser reloading.
+config :fast_api, FastApiWeb.Endpoint,
+  live_reload: [
+    patterns: [
+      ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"priv/gettext/.*(po)$",
+      ~r"lib/fast_api_web/(live|views)/.*(ex)$",
+      ~r"lib/fast_api_web/templates/.*(eex)$"
+    ]
+  ]
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"
