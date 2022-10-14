@@ -32,6 +32,7 @@ defmodule FastApiWeb.Router do
     get "/details/:category/:item", DetailController, :index
     get "/details/:module/:collection/:item", DetailController, :get_item_page
 
+    get "/:module", FeatureController, :get_module
     get "/:module/:collection", FeatureController, :get_page
     get "/:module/:collection/:item", FeatureController, :get_item
   end
