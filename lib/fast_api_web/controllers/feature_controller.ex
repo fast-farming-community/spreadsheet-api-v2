@@ -2,6 +2,11 @@ defmodule FastApiWeb.FeatureController do
   use FastApiWeb, :controller
   alias FastApi.MongoDB
 
+  def get_module(conn, %{"module" => module}) do
+    data = MongDB.get_module(module)
+    json(conn, data)
+  end
+
   def get_collection(conn, %{"module" => module, "collection" => collection}) do
     data = MongoDB.get_collection(module, collection)
     json(conn, data)

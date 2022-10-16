@@ -1,23 +1,32 @@
 defmodule FastApi.MongoDB do
   alias FastApi.MongoPipelines
 
-  def get_collection(database, collection) do
-    cursor = Mongo.find(:mongo, collection, %{}, database: database)
+  def get_module(database) do
+    :mongo
+    |> Mongo.show_collections(database: database)
+    |> Enum.to_list()
+    |> Enum.reduce([], fn collection, collections ->
+      collection_map = %{name: collection, tables: get_collection(database, collection)}
+      [collection_map | collections]
+    end)
+  end
 
-    Enum.to_list(cursor)
+  def get_collection(database, collection) do
+    :mongo
+    |> Mongo.find(collection, %{}, database: database)
+    |> Enum.to_list()
   end
 
   def get_page(database, collection) do
-    cursor =
-      Mongo.aggregate(:mongo, collection, MongoPipelines.build_page_document(), database: database)
-
-    Enum.to_list(cursor)
+    :mongo
+    |> Mongo.aggregate(collection, MongoPipelines.build_page_document(), database: database)
+    |> Enum.to_list()
   end
 
   def get_item_by_key(database, collection, key) do
-    result = Mongo.find_one(:mongo, collection, %{"Key" => key}, database: database)
-
-    Enum.into(result, %{})
+    :mongo
+    |> Mongo.find_one(collection, %{"Key" => key}, database: database)
+    |> Enum.into(%{})
   end
 
   def get_item_details(database, collection) do
