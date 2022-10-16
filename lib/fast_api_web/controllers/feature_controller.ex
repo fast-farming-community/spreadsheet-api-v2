@@ -3,7 +3,7 @@ defmodule FastApiWeb.FeatureController do
   alias FastApi.MongoDB
 
   def get_module(conn, %{"module" => module}) do
-    data = MongDB.get_module(module)
+    data = MongoDB.get_module(module)
     json(conn, data)
   end
 
