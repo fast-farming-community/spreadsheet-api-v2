@@ -14,7 +14,7 @@ config :fast_api, FastApiWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
 config :cors_plug,
-  origin: ["https://fast.farming-community.eu"],
+  origin: ["https://fast.farming-community.eu", "https://farming-community.eu", "https://www.farming-community.eu"],
   methods: ["GET"]
 
 # Do not print debug messages in production
