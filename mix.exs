@@ -37,7 +37,7 @@ defmodule FastApi.MixProject do
       {:gettext, "~> 0.18"},
       {:httpoison, "~> 1.8"},
       {:jason, "~> 1.2"},
-      {:mongodb, "~> 0.5.1"},
+      {:mongodb, github: "elixir-mongo/mongodb"},
       {:phoenix, "~> 1.6.2"},
       {:plug_cowboy, "~> 2.5"},
       {:reverse_proxy_plug, "~> 2.1"},
