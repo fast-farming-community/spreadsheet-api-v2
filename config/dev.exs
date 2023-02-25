@@ -5,6 +5,15 @@ config :fast_api,
   mongo_uname: "mongo",
   mongo_password: "mongo"
 
+config :fast_api, FastApi.Repos.Fast,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "fast_api_dev",
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true,
+  pool_size: 10
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

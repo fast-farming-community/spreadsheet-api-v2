@@ -12,7 +12,7 @@ defmodule FastApi.Content.Schema do
               name: "",
               notice: "",
               overview: "",
-              professiong: "",
+              profession: "",
               singleTarget: "",
               skills: "",
               specialization: "",

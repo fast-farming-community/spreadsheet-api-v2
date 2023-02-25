@@ -12,6 +12,19 @@ services:
       - "27017:27017"
     volumes:
       - mongo:/data/db
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGDATA: /data/postgres
+    networks:
+      - test-network
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    volumes:
+      - postgres:/data/postgres
 
 networks:
   test-network:
@@ -19,3 +32,4 @@ networks:
 
 volumes:
   mongo:
+  postgres:

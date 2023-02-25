@@ -36,6 +36,21 @@ if config_env() == :prod do
     mongo_uname: System.get_env("MONGO_USERNAME"),
     mongo_password: System.get_env("MONGO_PASSWORD")
 
+  database_url =
+    System.get_env("DATABASE_URL") ||
+      raise """
+      environment variable DATABASE_URL is missing.
+      For example: ecto://USER:PASS@HOST/DATABASE
+      """
+
+  maybe_ipv6 = if System.get_env("ECTO_IPV6"), do: [:inet6], else: []
+
+  config :fast_api, FastApi.Repos.Fast,
+    # ssl: true,
+    url: database_url,
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    socket_options: maybe_ipv6
+
   # ## Using releases
   #
   # If you are doing OTP releases, you need to instruct Phoenix

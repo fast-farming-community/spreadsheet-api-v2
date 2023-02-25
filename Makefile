@@ -22,7 +22,7 @@ build-prod:
 
 .PHONY: run-prod
 run-prod: build-prod
-	_build/prod/rel/fast_api/bin/fast_api start
+	_build/prod/rel/fast_api/bin/fast_api daemon
 
 .PHONY: test-local-up
 test-local-up:
