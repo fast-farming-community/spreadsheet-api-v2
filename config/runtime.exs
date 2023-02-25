@@ -32,6 +32,7 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :fast_api,
+    mongo_host: System.get_env("MONGO_HOST"),
     mongo_uname: System.get_env("MONGO_USERNAME"),
     mongo_password: System.get_env("MONGO_PASSWORD")
 
