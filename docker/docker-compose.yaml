@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  mongo:
+    image: mongo:4.4.1
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=mongo
+      - MONGO_INITDB_ROOT_PASSWORD=mongo
+    networks:
+      - test-network
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo:/data/db
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  mongo:

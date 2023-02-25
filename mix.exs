@@ -34,16 +34,20 @@ defmodule FastApi.MixProject do
   defp deps do
     [
       {:cors_plug, "~> 2.0"},
+      {:ecto_sql, "~> 3.6"},
+      {:ecto_sqlite3, "~> 0.9.1"},
       {:gettext, "~> 0.18"},
-      {:httpoison, "~> 1.8"},
+      {:google_api_sheets, "~> 0.29.3"},
+      {:goth, "~> 1.3.0"},
       {:jason, "~> 1.2"},
       {:mongodb, github: "elixir-mongo/mongodb"},
       {:phoenix, "~> 1.6.2"},
+      {:phoenix_ecto, "~> 4.4"},
       {:plug_cowboy, "~> 2.5"},
-      {:reverse_proxy_plug, "~> 2.1"},
+      {:quantum, "~> 3.0"},
       {:swoosh, "~> 1.3"},
       {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"}
     ]
   end
 

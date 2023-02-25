@@ -8,6 +8,9 @@ defmodule FastApi.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      # {Goth, name: FastApi.Goth},
+      FastApi.Repos.Content,
+      FastApi.Scheduler,
       # Start the Telemetry supervisor
       FastApiWeb.Telemetry,
       # Start the PubSub system

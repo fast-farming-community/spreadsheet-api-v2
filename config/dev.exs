@@ -1,5 +1,10 @@
 import Config
 
+config :fast_api,
+  mongo_host: "localhost:27017",
+  mongo_uname: "mongo",
+  mongo_password: "mongo"
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

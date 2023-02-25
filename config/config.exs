@@ -29,6 +29,12 @@ config :fast_api,
   mongo_uname: nil,
   mongo_password: nil
 
+config :fast_api,
+  ecto_repos: [FastApi.Repos.Content]
+
+config :fast_api, FastApi.Repos.Content,
+  database: "priv/repo/config/collections.sqlite"
+
 # CMS configuration
 config :fast_api,
   cockpit_token: System.get_env("COCKPIT_TOKEN"),
@@ -36,8 +42,6 @@ config :fast_api,
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false
-
-config :reverse_proxy_plug, :http_client, ReverseProxyPlug.HTTPClient.Adapters.HTTPoison
 
 # Configures Elixir's Logger
 config :logger, :console,
