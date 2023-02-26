@@ -10,6 +10,7 @@ defmodule FastApi.Repos.Fast do
     @derive {Jason.Encoder, only: [:content, :published, :title]}
     schema "about" do
       field(:content, :string)
+      field(:order, :integer)
       field(:published, :boolean)
       field(:title, :string)
 
@@ -97,6 +98,7 @@ defmodule FastApi.Repos.Fast do
       field(:farmtrain, :string)
       field(:image, :string)
       field(:info, :string)
+      field(:order, :integer)
       field(:published, :boolean)
       field(:title, :string)
 

@@ -10,15 +10,19 @@ defmodule FastApiWeb.FeatureController do
   end
 
   def get_page(conn, %{"module" => _module, "collection" => collection}) do
-    data =
-      Repo.Page
-      |> Repo.get_by(name: collection)
-      |> Repo.preload(:tables)
-      |> then(fn page ->
-        Enum.map(page.tables, &%Repo.Table{&1 | rows: Jason.decode!(&1.rows)})
-      end)
+    if collection == "overview" do
+      json(conn, [])
+    else
+      data =
+        Repo.Page
+        |> Repo.get_by(name: collection)
+        |> Repo.preload(:tables)
+        |> then(fn page ->
+          Enum.map(page.tables, &%Repo.Table{&1 | rows: Jason.decode!(&1.rows)})
+        end)
 
-    json(conn, data)
+      json(conn, data)
+    end
   end
 
   def get_item(conn, %{"module" => module, "collection" => collection, "item" => item}) do

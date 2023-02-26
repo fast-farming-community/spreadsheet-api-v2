@@ -8,6 +8,7 @@ defmodule FastApiWeb.ContentController do
       Repo.About
       |> Repo.all()
       |> Enum.filter(& &1.published)
+      |> Enum.sort_by(& &1.order, :asc)
 
     json(conn, data)
   end
@@ -35,6 +36,7 @@ defmodule FastApiWeb.ContentController do
       Repo.Guide
       |> Repo.all()
       |> Enum.filter(& &1.published)
+      |> Enum.sort_by(& &1.order, :asc)
 
     json(conn, data)
   end
