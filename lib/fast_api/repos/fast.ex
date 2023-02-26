@@ -1,32 +1,6 @@
 defmodule FastApi.Repos.Fast do
   use Ecto.Repo, otp_app: :fast_api, adapter: Ecto.Adapters.Postgres
 
-  defmodule Page do
-    use Ecto.Schema
-
-    schema "pages" do
-      field(:name, :string)
-      has_many(:table_definitions, FastApi.Repo.TableDefinition)
-
-      timestamps()
-    end
-  end
-
-  defmodule TableDefinition do
-    use Ecto.Schema
-
-    schema "table_definitions" do
-      field(:name, :string)
-      field(:description, :string)
-      field(:module, :string)
-      field(:feature, :string)
-      field(:range, :string)
-      belongs_to(:page, FastApi.Repo.Page)
-
-      timestamps()
-    end
-  end
-
   #########################################################################################
   # CONTENT
   #########################################################################################
@@ -102,6 +76,19 @@ defmodule FastApi.Repos.Fast do
     end
   end
 
+  defmodule Feature do
+    use Ecto.Schema
+
+    @derive {Jason.Encoder, only: [:name, :pages]}
+    schema "features" do
+      field(:name, :string)
+      has_many(:pages, FastApi.Repos.Fast.Page)
+      field(:published, :boolean)
+
+      timestamps()
+    end
+  end
+
   defmodule Guide do
     use Ecto.Schema
 
@@ -114,6 +101,44 @@ defmodule FastApi.Repos.Fast do
       field(:title, :string)
 
       timestamps()
+    end
+  end
+
+  defmodule Page do
+    use Ecto.Schema
+
+    @derive {Jason.Encoder, only: [:name, :tables]}
+    schema "pages" do
+      belongs_to(:feature, FastApi.Repos.Fast.Feature)
+      field(:name, :string)
+      field(:published, :boolean)
+      has_many(:tables, FastApi.Repos.Fast.Table)
+
+      timestamps()
+    end
+  end
+
+  defmodule Table do
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @derive {Jason.Encoder, only: [:description, :name, :order, :rows]}
+    schema "tables" do
+      field(:description, :string)
+      field(:name, :string)
+      field(:order, :integer)
+      belongs_to(:page, FastApi.Repos.Fast.Page)
+      field(:published, :boolean)
+      field(:range, :string)
+      field(:rows, :string)
+
+      timestamps()
+    end
+
+    def changeset(table, params \\ %{}) do
+      table
+      |> cast(params, [:rows])
+      |> unique_constraint(:tables_unique_id)
     end
   end
 end

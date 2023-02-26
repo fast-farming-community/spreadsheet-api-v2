@@ -28,10 +28,17 @@ defmodule FastApi.Repos.Migrate do
     |> Enum.map(&__MODULE__.Utils.parse_content/1)
     |> Enum.each(&Fast.insert(&1))
   end
+
+  def migrate_spreadsheets() do
+    Content.Spreadsheet
+    |> Content.all()
+    |> Enum.map(&__MODULE__.Utils.parse_content/1)
+    |> Enum.each(&Fast.insert(&1))
+  end
 end
 
 defmodule FastApi.Repos.Migrate.Utils do
-  alias FastApi.Repos.Fast.{About, Build, Contributor, Guide}
+  alias FastApi.Repos.Fast.{About, Build, Contributor, Feature, Guide, Page, Table}
 
   def parse_content(%{document: document}) do
     document
@@ -100,6 +107,29 @@ defmodule FastApi.Repos.Migrate.Utils do
          "title" => title
        }) do
     %Guide{farmtrain: farmtrain, image: image, info: info, published: published, title: title}
+  end
+
+  defp to_struct(%{"Entries" => entries, "Feature" => feature}) do
+    %Feature{
+      pages: Enum.map(entries, &to_struct/1),
+      name: feature,
+      published: true
+    }
+  end
+
+  defp to_struct(%{"name" => name, "tables" => tables}) do
+    %Page{name: name, published: true, tables: Enum.with_index(tables, &to_struct/2)}
+  end
+
+  defp to_struct(%{"description" => description, "name" => name, "range" => range}, index) do
+    %Table{
+      description: description,
+      name: name,
+      order: index,
+      published: true,
+      range: range,
+      rows: ""
+    }
   end
 
   defp to_struct(map), do: map
