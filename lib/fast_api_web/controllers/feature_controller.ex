@@ -15,10 +15,7 @@ defmodule FastApiWeb.FeatureController do
       |> Repo.get_by(name: collection)
       |> Repo.preload(:tables)
       |> then(fn page ->
-        %Repo.Page{
-          page
-          | tables: Enum.map(page.tables, &%Repo.Table{&1 | rows: Jason.decode!(&1.rows)})
-        }
+        Enum.map(page.tables, &%Repo.Table{&1 | rows: Jason.decode!(&1.rows)})
       end)
 
     json(conn, data)
