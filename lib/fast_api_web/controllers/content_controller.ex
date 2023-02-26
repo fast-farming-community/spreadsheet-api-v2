@@ -1,7 +1,6 @@
 defmodule FastApiWeb.ContentController do
   use FastApiWeb, :controller
 
-  alias FastApi.Content.Utils
   alias FastApi.Repos.Fast, as: Repo
 
   def index(conn, _params) do

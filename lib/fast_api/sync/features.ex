@@ -2,7 +2,7 @@ defmodule FastApi.Sync.Features do
   alias FastApi.Repos.Fast, as: Repo
   alias GoogleApi.Sheets.V4.Model.ValueRange
 
-  def index() do
+  def execute() do
     Repo.Table
     |> Repo.all()
     |> Enum.chunk_every(30)

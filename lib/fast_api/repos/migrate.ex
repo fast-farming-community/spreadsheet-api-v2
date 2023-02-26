@@ -121,6 +121,8 @@ defmodule FastApi.Repos.Migrate.Utils do
     %Page{name: name, published: true, tables: Enum.with_index(tables, &to_struct/2)}
   end
 
+  defp to_struct(map), do: map
+
   defp to_struct(%{"description" => description, "name" => name, "range" => range}, index) do
     %Table{
       description: description,
@@ -131,6 +133,4 @@ defmodule FastApi.Repos.Migrate.Utils do
       rows: ""
     }
   end
-
-  defp to_struct(map), do: map
 end

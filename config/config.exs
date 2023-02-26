@@ -32,13 +32,12 @@ config :fast_api,
 config :fast_api,
   ecto_repos: [FastApi.Repos.Content]
 
-config :fast_api, FastApi.Repos.Content,
-  database: "priv/repo/config/collections.sqlite"
+config :fast_api, FastApi.Repos.Content, database: "priv/repo/config/collections.sqlite"
 
-# CMS configuration
-config :fast_api,
-  cockpit_token: System.get_env("COCKPIT_TOKEN"),
-  cockpit_url: "https://fast.farming-community.eu/cockpit/api/collections/get/"
+config :fast_api, FastApi.Scheduler,
+  jobs: [
+    {"@hourly", {FastApi.Sync.Features, :execute, []}}
+  ]
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false

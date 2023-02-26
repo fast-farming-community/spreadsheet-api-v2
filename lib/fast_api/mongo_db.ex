@@ -1,5 +1,4 @@
 defmodule FastApi.MongoDB do
-  alias FastApi.Content.Schema
   alias FastApi.MongoPipelines
 
   def get_module(database) do
@@ -41,11 +40,6 @@ defmodule FastApi.MongoDB do
     list = get_item_details(category, item_key)
 
     %{detail: item, list: list}
-  end
-
-  def upload(%Schema.Spreadsheet{feature: feature, entries: entries}) do
-    # Mongo.delete_many(:mongo, )
-    # Mongo
   end
 end
 
