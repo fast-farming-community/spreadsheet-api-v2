@@ -1,5 +1,6 @@
 import Config
 
+# DEPRECATED
 config :fast_api,
   mongo_host: "localhost:27017",
   mongo_uname: "mongo",

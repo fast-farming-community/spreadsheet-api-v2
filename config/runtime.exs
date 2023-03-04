@@ -63,7 +63,7 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  # Configure Mongo
+  # DEPRECATED: Configure Mongo
   config :fast_api,
     mongo_host: System.get_env("MONGO_HOST"),
     mongo_uname: System.get_env("MONGO_USERNAME"),

@@ -20,6 +20,7 @@ defmodule FastApi.Application do
       FastApiWeb.Endpoint,
       # Start a worker by calling: FastApi.Worker.start_link(arg)
       # {FastApi.Worker, arg}
+      # DEPRECATED
       {Mongo,
        name: :mongo,
        database: "admin",

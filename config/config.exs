@@ -30,7 +30,7 @@ config :fast_api,
 # at the `config/runtime.exs`.
 config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
-# Mongo configuration
+# DEPRECATED: Mongo configuration
 config :fast_api,
   mongo_host: "localhost",
   mongo_uname: nil,
