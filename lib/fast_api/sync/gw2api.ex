@@ -35,7 +35,7 @@ defmodule FastApi.Sync.GW2API do
       GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
         connection,
         "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
-        "DailyAPI!A3:G#{3 + length(dailies)}",
+        "DailyAPI!A4:G#{4 + length(dailies)}",
         body: %{values: dailies},
         valueInputOption: "RAW"
       )
@@ -89,7 +89,7 @@ defmodule FastApi.Sync.GW2API do
       GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
         connection,
         "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
-        "API!A100:G#{100 + length(items)}",
+        "API!A4:G#{4 + length(items)}",
         body: %{values: items},
         valueInputOption: "RAW"
       )
