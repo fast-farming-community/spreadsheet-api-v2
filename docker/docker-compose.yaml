@@ -1,6 +1,7 @@
 version: '3.9'
 
 services:
+  # DEPRECATED
   mongo:
     image: mongo:4.4.1
     environment:
@@ -31,5 +32,6 @@ networks:
     driver: bridge
 
 volumes:
+  # DEPRECATED
   mongo:
   postgres:
