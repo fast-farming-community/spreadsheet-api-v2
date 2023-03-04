@@ -106,6 +106,33 @@ defmodule FastApi.Repos.Fast do
     end
   end
 
+  defmodule Item do
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    schema "items" do
+      field(:buy, :integer)
+      field(:chat_link, :string)
+      field(:icon, :string)
+      field(:level, :integer)
+      field(:name, :string)
+      field(:rarity, :string)
+      field(:sell, :integer)
+      field(:tradable, :boolean)
+      field(:type, :string)
+      field(:vendor_value, :integer)
+
+      timestamps()
+    end
+
+    def changeset(item, %{
+          buys: %{"unit_price" => buy_price},
+          sells: %{"unit_price" => sell_price}
+        }) do
+      change(item, buy: buy_price, sell: sell_price)
+    end
+  end
+
   defmodule Page do
     use Ecto.Schema
 

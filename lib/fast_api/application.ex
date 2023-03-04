@@ -9,6 +9,7 @@ defmodule FastApi.Application do
   def start(_type, _args) do
     children = [
       {Goth, name: FastApi.Goth},
+      {Finch, name: FastApi.Finch},
       FastApi.Repos.Content,
       FastApi.Repos.Fast,
       FastApi.Scheduler,

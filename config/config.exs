@@ -44,6 +44,8 @@ config :fast_api, FastApi.Repos.Fast, priv: "priv/fast"
 
 config :fast_api, FastApi.Scheduler,
   jobs: [
+    {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
+    {"55 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
     {"@hourly", {FastApi.Sync.Features, :execute, []}}
   ]
 
