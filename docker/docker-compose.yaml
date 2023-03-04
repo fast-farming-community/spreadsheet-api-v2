@@ -1,6 +1,7 @@
 version: '3.9'
 
 services:
+  # DEPRECATED
   mongo:
     image: mongo:4.4.1
     environment:
@@ -25,20 +26,12 @@ services:
     restart: unless-stopped
     volumes:
       - postgres:/data/postgres
-  spreadsheet_sync:
-    image: spreadsheet_sync
-    environment:
-      - DISABLE_SPREADSHEET_SYNC=true
-      - MONGO_USERNAME=mongo
-      - MONGO_PASSWORD=mongo
-      - MONGO_HOST=mongo
-    networks:
-      - test-network
 
 networks:
   test-network:
     driver: bridge
 
 volumes:
-  postgres:
+  # DEPRECATED
   mongo:
+  postgres:

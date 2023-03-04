@@ -8,7 +8,10 @@ defmodule FastApi.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      FastApi.Repo,
+      {Goth, name: FastApi.Goth},
+      FastApi.Repos.Content,
+      FastApi.Repos.Fast,
+      FastApi.Scheduler,
       # Start the Telemetry supervisor
       FastApiWeb.Telemetry,
       # Start the PubSub system
@@ -17,6 +20,7 @@ defmodule FastApi.Application do
       FastApiWeb.Endpoint,
       # Start a worker by calling: FastApi.Worker.start_link(arg)
       # {FastApi.Worker, arg}
+      # DEPRECATED
       {Mongo,
        name: :mongo,
        database: "admin",

@@ -1,7 +1,12 @@
 import Config
 
-# Configure your database
-config :fast_api, FastApi.Repo,
+# DEPRECATED
+config :fast_api,
+  mongo_host: "localhost:27017",
+  mongo_uname: "mongo",
+  mongo_password: "mongo"
+
+config :fast_api, FastApi.Repos.Fast,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
@@ -9,11 +14,6 @@ config :fast_api, FastApi.Repo,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
-
-config :fast_api,
-  mongo_host: "localhost:27017",
-  mongo_uname: "mongo",
-  mongo_password: "mongo"
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

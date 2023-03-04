@@ -30,10 +30,25 @@ config :fast_api,
 # at the `config/runtime.exs`.
 config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
+# DEPRECATED: Mongo configuration
+config :fast_api,
+  mongo_host: "localhost",
+  mongo_uname: nil,
+  mongo_password: nil
+
+config :fast_api,
+  ecto_repos: [FastApi.Repos.Content, FastApi.Repos.Fast]
+
+config :fast_api, FastApi.Repos.Content, database: "priv/repo/config/collections.sqlite"
+config :fast_api, FastApi.Repos.Fast, priv: "priv/fast"
+
+config :fast_api, FastApi.Scheduler,
+  jobs: [
+    {"@hourly", {FastApi.Sync.Features, :execute, []}}
+  ]
+
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false
-
-config :reverse_proxy_plug, :http_client, ReverseProxyPlug.HTTPClient.Adapters.HTTPoison
 
 # Configures Elixir's Logger
 config :logger, :console,

@@ -13,18 +13,13 @@ defmodule FastApiWeb.Router do
     plug :accepts, ["json"]
   end
 
-  pipeline :cms do
-    plug :add_authorization_header
-  end
-
-  scope "/api/v1/cms" do
-    pipe_through :cms
-
-    forward "/", ReverseProxyPlug, upstream: Application.fetch_env!(:fast_api, :cockpit_url)
-  end
-
   scope "/api/v1", FastApiWeb do
     pipe_through :api
+
+    get "/about", ContentController, :index
+    get "/builds", ContentController, :builds
+    get "/contributors", ContentController, :contributors
+    get "/guides", ContentController, :guides
 
     get "/metadata", MetaController, :index
     get "/metadata/indexes", MetaController, :index
@@ -35,14 +30,6 @@ defmodule FastApiWeb.Router do
     get "/:module", FeatureController, :get_module
     get "/:module/:collection", FeatureController, :get_page
     get "/:module/:collection/:item", FeatureController, :get_item
-  end
-
-  defp add_authorization_header(conn, _) do
-    Plug.Conn.put_req_header(
-      conn,
-      "Authorization",
-      "Bearer #{Application.fetch_env!(:fast_api, :cockpit_token)}"
-    )
   end
 
   # Enables the Swoosh mailbox preview in development.
