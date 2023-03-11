@@ -20,7 +20,7 @@ defmodule FastApi.MixProject do
   def application do
     [
       mod: {FastApi.Application, []},
-      extra_applications: [:logger, :mongodb, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools]
     ]
   end
 
@@ -40,7 +40,6 @@ defmodule FastApi.MixProject do
       {:google_api_sheets, "~> 0.29.3"},
       {:goth, "~> 1.3.0"},
       {:jason, "~> 1.2"},
-      {:mongodb, github: "elixir-mongo/mongodb"},
       {:phoenix, "~> 1.6.2"},
       {:phoenix_ecto, "~> 4.4"},
       {:plug_cowboy, "~> 2.5"},
