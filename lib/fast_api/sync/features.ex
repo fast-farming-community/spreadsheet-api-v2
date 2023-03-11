@@ -19,7 +19,7 @@ defmodule FastApi.Sync.Features do
 
     Repo.Metadata
     |> Repo.get_by(name: metadata_name(repo))
-    |> Repo.Metadata.changeset(%{data: :crypto.strong_rand_bytes(10)})
+    |> Repo.Metadata.changeset(%{data: ""})
     |> Repo.update()
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")

@@ -3,12 +3,20 @@ defmodule FastApiWeb.DetailController do
 
   alias FastApi.Repos.Fast, as: Repo
 
+  import Ecto.Query
+
   def get_item_page(conn, %{"module" => module, "collection" => collection, "item" => item}) do
-    detail = get_detail(module, collection, item)
+    %{"Category" => category} = detail = get_detail(module, collection, item)
 
     {list, description} =
-      Repo.DetailTable
-      |> Repo.get_by(key: item)
+      from(t in Repo.DetailTable,
+        where: t.key == ^item,
+        join: f in Repo.DetailFeature,
+        on: t.detail_feature_id == f.id,
+        where: f.name == ^category,
+        select: %{rows: t.rows, description: t.description}
+      )
+      |> Repo.one()
       |> then(&{Jason.decode!(&1.rows), &1.description})
 
     json(conn, %{description: description, detail: detail, list: list})
