@@ -3,8 +3,27 @@ defmodule FastApiWeb.DetailController do
 
   alias FastApi.Repos.Fast, as: Repo
 
-  def get_item_page(conn, %{"collection" => collection, "item" => item}) do
-    detail =
+  def get_item_page(conn, %{"module" => module, "collection" => collection, "item" => item}) do
+    detail = get_detail(module, collection, item)
+
+    {list, description} =
+      Repo.DetailTable
+      |> Repo.get_by(key: item)
+      |> then(&{Jason.decode!(&1.rows), &1.description})
+
+    json(conn, %{description: description, detail: detail, list: list})
+  end
+
+  defp get_detail(module, collection, item) do
+    if String.contains?(module, "details") do
+      Repo.DetailTable
+      |> Repo.get_by(key: collection)
+      |> then(&Jason.decode!(&1.rows))
+      |> Enum.find(fn
+        %{"Key" => ^item} -> true
+        _ -> false
+      end)
+    else
       Repo.Page
       |> Repo.get_by(name: collection)
       |> Repo.preload(:tables)
@@ -13,12 +32,6 @@ defmodule FastApiWeb.DetailController do
         %{"Key" => ^item} -> true
         _ -> false
       end)
-
-    {list, description} =
-      Repo.DetailTable
-      |> Repo.get_by(key: item)
-      |> then(&{Jason.decode!(&1.rows), &1.description})
-
-    json(conn, %{description: description, detail: detail, list: list})
+    end
   end
 end

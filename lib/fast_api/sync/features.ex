@@ -60,6 +60,6 @@ defmodule FastApi.Sync.Features do
     end)
   end
 
-  defp metadata_name(NGCP.FastApi.Repos.Fast.Table), do: "main"
-  defp metadata_name(NGCP.FastApi.Repos.Fast.DetailTable), do: "detail"
+  defp metadata_name(FastApi.Repos.Fast.Table), do: "main"
+  defp metadata_name(FastApi.Repos.Fast.DetailTable), do: "detail"
 end
