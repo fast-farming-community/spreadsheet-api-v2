@@ -35,10 +35,33 @@ defmodule FastApi.Repos.Migrate do
     |> Enum.map(&__MODULE__.Utils.parse_content/1)
     |> Enum.each(&Fast.insert(&1))
   end
+
+  def migrate_detailed_spreadsheets() do
+    descriptions =
+      Content.DetailedDataDescription
+      |> Content.all()
+      |> Enum.map(&__MODULE__.Utils.parse_content/1)
+
+    Content.DetailedSpreadsheet
+    |> Content.all()
+    |> Enum.map(&__MODULE__.Utils.parse_content/1)
+    |> Enum.map(&__MODULE__.Utils.merge_descriptions(&1, descriptions))
+    |> Enum.each(&Fast.insert(&1))
+  end
 end
 
 defmodule FastApi.Repos.Migrate.Utils do
-  alias FastApi.Repos.Fast.{About, Build, Contributor, Feature, Guide, Page, Table}
+  alias FastApi.Repos.Fast.{
+    About,
+    Build,
+    Contributor,
+    DetailFeature,
+    DetailTable,
+    Feature,
+    Guide,
+    Page,
+    Table
+  }
 
   def parse_content(%{document: document}) do
     document
@@ -121,6 +144,22 @@ defmodule FastApi.Repos.Migrate.Utils do
     %Page{name: name, published: true, tables: Enum.with_index(tables, &to_struct/2)}
   end
 
+  defp to_struct(%{"Category" => category, "Entries" => entries, "Published" => published}) do
+    %DetailFeature{
+      detail_tables: Enum.map(entries, &to_struct/1),
+      name: category,
+      published: published
+    }
+  end
+
+  defp to_struct(%{"key" => key, "name" => name, "range" => range}) do
+    %DetailTable{key: key, name: name, range: range}
+  end
+
+  defp to_struct(%{"Category" => category, "Key" => key, "body" => description}) do
+    %{category: category, key: key, description: description}
+  end
+
   defp to_struct(map), do: map
 
   defp to_struct(%{"description" => description, "name" => name, "range" => range}, index) do
@@ -132,5 +171,23 @@ defmodule FastApi.Repos.Migrate.Utils do
       range: range,
       rows: ""
     }
+  end
+
+  def merge_descriptions(
+        %DetailFeature{name: name, detail_tables: tables} = feature,
+        descriptions
+      ) do
+    updated_tables =
+      Enum.map(tables, fn %DetailTable{key: key} = table ->
+        description =
+          Enum.find_value(descriptions, "", fn
+            %{category: ^name, key: ^key, description: description} -> description
+            _ -> false
+          end)
+
+        %DetailTable{table | description: description}
+      end)
+
+    %DetailFeature{feature | detail_tables: updated_tables}
   end
 end

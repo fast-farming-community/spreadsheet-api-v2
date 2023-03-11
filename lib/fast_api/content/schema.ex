@@ -29,6 +29,16 @@ defmodule FastApi.Content.Schema do
     defstruct commanders: [], developers: [], supporters: []
   end
 
+  defmodule DetailedSpreadsheet do
+    @derive Jason.Encoder
+    defstruct category: "", entries: [], published: false
+  end
+
+  defmodule DetailedSpreadsheetEntry do
+    @derive Jason.Encoder
+    defstruct name: "", key: "", range: ""
+  end
+
   defmodule Guide do
     @derive Jason.Encoder
     defstruct farmtrain: "", image: "", info: "", published: false, title: ""
@@ -46,6 +56,6 @@ defmodule FastApi.Content.Schema do
 
   defmodule SpreadsheetTable do
     @derive Jason.Encoder
-    defstruct description: "", name: "", range: "", rows: []
+    defstruct description: "", name: "", range: ""
   end
 end

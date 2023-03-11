@@ -21,21 +21,6 @@ if System.get_env("PHX_SERVER") do
 end
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
-
-  maybe_ipv6 = if System.get_env("ECTO_IPV6"), do: [:inet6], else: []
-
-  config :fast_api, FastApi.Repo,
-    # ssl: true,
-    url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    socket_options: maybe_ipv6
-
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want
@@ -63,12 +48,6 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  # DEPRECATED: Configure Mongo
-  config :fast_api,
-    mongo_host: System.get_env("MONGO_HOST"),
-    mongo_uname: System.get_env("MONGO_USERNAME"),
-    mongo_password: System.get_env("MONGO_PASSWORD")
-
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """
@@ -83,6 +62,14 @@ if config_env() == :prod do
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
+
+  config :fast_api, FastApi.Scheduler,
+    jobs: [
+      {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
+      {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
+      {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.DetailTable]}},
+      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.Table]}}
+    ]
 
   # ## Configuring the mailer
   #

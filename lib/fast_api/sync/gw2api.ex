@@ -31,7 +31,7 @@ defmodule FastApi.Sync.GW2API do
     {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
-    {:ok, response} =
+    {:ok, _response} =
       GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
         connection,
         "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
@@ -39,6 +39,8 @@ defmodule FastApi.Sync.GW2API do
         body: %{values: dailies},
         valueInputOption: "RAW"
       )
+
+    :ok
   end
 
   # WIP: Cleanup
@@ -58,6 +60,8 @@ defmodule FastApi.Sync.GW2API do
     |> get_details(@items)
     |> Enum.map(&to_item/1)
     |> Enum.each(&Repo.insert(&1, on_conflict: :replace_all, conflict_target: [:id]))
+
+    :ok
   end
 
   @spec sync_prices() :: :ok
@@ -85,7 +89,7 @@ defmodule FastApi.Sync.GW2API do
     {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
-    {:ok, response} =
+    {:ok, _response} =
       GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
         connection,
         "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",

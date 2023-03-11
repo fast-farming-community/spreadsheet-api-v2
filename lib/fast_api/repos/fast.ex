@@ -67,13 +67,49 @@ defmodule FastApi.Repos.Fast do
   defmodule Contributor do
     use Ecto.Schema
 
-    @derive {Jason.Encoder, only: [:name, :published, :type]}
+    @derive {Jason.Encoder, only: [:name, :type]}
     schema "contributors" do
       field(:name, :string)
       field(:published, :boolean)
       field(:type, :string)
 
       timestamps()
+    end
+  end
+
+  defmodule DetailFeature do
+    use Ecto.Schema
+
+    @derive {Jason.Encoder, only: [:name, :detail_tables]}
+    schema "detail_features" do
+      field(:name, :string)
+      has_many(:detail_tables, FastApi.Repos.Fast.DetailTable)
+      field(:published, :boolean)
+
+      timestamps()
+    end
+  end
+
+  defmodule DetailTable do
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @derive {Jason.Encoder, only: [:description, :key, :name, :rows]}
+    schema "detail_tables" do
+      field(:description, :string)
+      belongs_to(:detail_feature, FastApi.Repos.Fast.DetailFeature)
+      field(:key, :string)
+      field(:name, :string)
+      field(:range, :string)
+      field(:rows, :string)
+
+      timestamps()
+    end
+
+    def changeset(table, params \\ %{}) do
+      table
+      |> cast(params, [:rows])
+      |> unique_constraint(:detail_tables_unique_id)
     end
   end
 
@@ -131,6 +167,21 @@ defmodule FastApi.Repos.Fast do
         }) do
       change(item, buy: buy_price, sell: sell_price)
     end
+  end
+
+  defmodule Metadata do
+    use Ecto.Schema
+    import Ecto.Changeset
+
+    @derive {Jason.Encoder, only: [:name, :data, :updated_at]}
+    schema "metadata" do
+      field(:data, :string)
+      field(:name, :string)
+
+      timestamps()
+    end
+
+    def changeset(metadata, params \\ %{}), do: cast(metadata, params, [:data])
   end
 
   defmodule Page do

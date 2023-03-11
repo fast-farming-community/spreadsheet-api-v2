@@ -1,11 +1,5 @@
 import Config
 
-# DEPRECATED
-config :fast_api,
-  mongo_host: "localhost:27017",
-  mongo_uname: "mongo",
-  mongo_password: "mongo"
-
 config :fast_api, FastApi.Repos.Fast,
   username: "postgres",
   password: "postgres",
@@ -61,9 +55,6 @@ config :fast_api, FastApiWeb.Endpoint,
       ~r"lib/fast_api_web/templates/.*(eex)$"
     ]
   ]
-
-# Do not include metadata nor timestamps in development logs
-config :logger, :console, format: "[$level] $message\n"
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
