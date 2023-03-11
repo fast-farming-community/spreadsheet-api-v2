@@ -23,10 +23,18 @@ defmodule FastApiWeb.DetailController do
   end
 
   defp get_detail(module, collection, item) do
+    # TODO: Clean this up
     if String.contains?(module, "details") do
-      Repo.DetailTable
-      |> Repo.get_by(key: collection)
-      |> then(&Jason.decode!(&1.rows))
+      module = String.replace(module, "-details", "")
+
+      from(t in Repo.DetailTable,
+        join: f in Repo.DetailFeature,
+        on: t.detail_feature_id == f.id,
+        where: f.name == ^module and t.key == ^collection,
+        select: t.rows
+      )
+      |> Repo.one()
+      |> Jason.decode!()
       |> Enum.find(fn
         %{"Key" => ^item} -> true
         _ -> false
