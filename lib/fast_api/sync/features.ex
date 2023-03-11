@@ -2,19 +2,35 @@ defmodule FastApi.Sync.Features do
   alias FastApi.Repos.Fast, as: Repo
   alias GoogleApi.Sheets.V4.Model.ValueRange
 
-  def execute() do
-    Repo.Table
-    |> Repo.all()
+  require Logger
+
+  def execute(repo) do
+    list = Repo.all(repo)
+    len = length(list)
+
+    Logger.info("Started fetching #{len} tables from Google Sheets API.")
+
+    list
     |> Enum.chunk_every(30)
-    |> Enum.flat_map(&get_spreadsheet_tables/1)
-    |> Enum.map(fn {table, changes} -> Repo.Table.changeset(table, changes) end)
+    |> Enum.with_index()
+    |> Enum.flat_map(&get_spreadsheet_tables(&1, ceil(len / 30)))
+    |> Enum.map(fn {table, changes} -> repo.changeset(table, changes) end)
     |> Enum.each(&Repo.update/1)
+
+    Repo.Metadata
+    |> Repo.get_by(name: metadata_name(repo))
+    |> Repo.Metadata.changeset(%{data: :crypto.strong_rand_bytes(10)})
+    |> Repo.update()
+
+    Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end
 
-  @spec get_spreadsheet_tables([Repo.Table.t()]) :: [{Repo.Table.t(), map()}]
-  defp get_spreadsheet_tables(tables) do
+  @spec get_spreadsheet_tables([Repo.Table.t()], non_neg_integer()) :: [{Repo.Table.t(), map()}]
+  defp get_spreadsheet_tables({tables, idx}, total) do
     {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
+
+    Logger.info("Fetching table chunk #{idx + 1}/#{total}.")
 
     {:ok, response} =
       GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
@@ -26,11 +42,11 @@ defmodule FastApi.Sync.Features do
       )
 
     # Give Google some time to rest
-    Process.sleep(1_000)
+    Process.sleep(200)
 
     tables
     |> Enum.zip(response.valueRanges)
-    |> Enum.map(fn {%Repo.Table{} = table, %ValueRange{values: values}} ->
+    |> Enum.map(fn {%_{} = table, %ValueRange{values: values}} ->
       [headers | rows] = values
       headers = Enum.map(headers, &String.replace(&1, ~r/[\W_]+/, ""))
 
@@ -43,4 +59,7 @@ defmodule FastApi.Sync.Features do
       |> then(&{table, %{rows: &1}})
     end)
   end
+
+  defp metadata_name(NGCP.FastApi.Repos.Fast.Table), do: "main"
+  defp metadata_name(NGCP.FastApi.Repos.Fast.DetailTable), do: "detail"
 end

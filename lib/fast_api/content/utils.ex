@@ -2,6 +2,8 @@ defmodule FastApi.Content.Utils do
   alias FastApi.Content.Schema.{
     About,
     Contributor,
+    DetailedSpreadsheet,
+    DetailedSpreadsheetEntry,
     Guide,
     Spreadsheet,
     SpreadsheetEntry,
@@ -42,6 +44,18 @@ defmodule FastApi.Content.Utils do
       feature: feature,
       published: published
     }
+  end
+
+  defp to_struct(%{"Category" => category, "Entries" => entries, "Published" => published}) do
+    %DetailedSpreadsheet{
+      category: category,
+      entries: Enum.map(entries, &to_struct/1),
+      published: published
+    }
+  end
+
+  defp to_struct(%{"name" => name, "key" => key, "range" => range}) do
+    %DetailedSpreadsheetEntry{name: name, key: key, range: range}
   end
 
   defp to_struct(%{"name" => name, "tables" => tables}) do

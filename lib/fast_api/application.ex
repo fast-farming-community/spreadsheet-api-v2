@@ -21,14 +21,6 @@ defmodule FastApi.Application do
       FastApiWeb.Endpoint,
       # Start a worker by calling: FastApi.Worker.start_link(arg)
       # {FastApi.Worker, arg}
-      # DEPRECATED
-      {Mongo,
-       name: :mongo,
-       database: "admin",
-       hostname: Application.fetch_env!(:fast_api, :mongo_host),
-       username: Application.fetch_env!(:fast_api, :mongo_uname),
-       password: Application.fetch_env!(:fast_api, :mongo_password),
-       pool_size: 5}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

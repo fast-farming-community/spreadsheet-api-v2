@@ -24,12 +24,9 @@ defmodule FastApiWeb.Router do
     get "/metadata", MetaController, :index
     get "/metadata/indexes", MetaController, :index
 
-    get "/details/:category/:item", DetailController, :index
     get "/details/:module/:collection/:item", DetailController, :get_item_page
 
-    get "/:module", FeatureController, :get_module
     get "/:module/:collection", FeatureController, :get_page
-    get "/:module/:collection/:item", FeatureController, :get_item
   end
 
   # Enables the Swoosh mailbox preview in development.
