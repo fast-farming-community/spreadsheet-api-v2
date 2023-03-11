@@ -19,7 +19,7 @@ defmodule FastApi.Sync.Features do
 
     Repo.Metadata
     |> Repo.get_by(name: metadata_name(repo))
-    |> Repo.Metadata.changeset(%{data: ""})
+    |> Repo.Metadata.changeset(%{data: DateTime.to_string(DateTime.utc_now())})
     |> Repo.update()
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
