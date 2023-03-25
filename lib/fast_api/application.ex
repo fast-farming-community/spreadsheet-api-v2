@@ -10,7 +10,6 @@ defmodule FastApi.Application do
     children = [
       {Goth, name: FastApi.Goth},
       {Finch, name: FastApi.Finch},
-      FastApi.Repos.Content,
       FastApi.Repos.Fast,
       FastApi.Scheduler,
       # Start the Telemetry supervisor

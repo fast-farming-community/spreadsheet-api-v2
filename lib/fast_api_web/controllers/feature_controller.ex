@@ -12,7 +12,9 @@ defmodule FastApiWeb.FeatureController do
     |> Repo.get_by(name: collection)
     |> Repo.preload(:tables)
     |> then(fn page ->
-      Enum.map(page.tables, &%Repo.Table{&1 | rows: Jason.decode!(&1.rows)})
+      page.tables
+      |> Enum.map(&%Repo.Table{&1 | rows: Jason.decode!(&1.rows)})
+      |> Enum.sort_by(& &1.order)
     end)
     |> then(&json(conn, &1))
   end

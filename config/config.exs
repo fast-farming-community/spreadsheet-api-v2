@@ -31,9 +31,8 @@ config :fast_api,
 config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
 config :fast_api,
-  ecto_repos: [FastApi.Repos.Content, FastApi.Repos.Fast]
+  ecto_repos: [FastApi.Repos.Fast]
 
-config :fast_api, FastApi.Repos.Content, database: "priv/repo/config/collections.sqlite"
 config :fast_api, FastApi.Repos.Fast, priv: "priv/fast"
 
 # Swoosh API client is needed for adapters other than SMTP.
