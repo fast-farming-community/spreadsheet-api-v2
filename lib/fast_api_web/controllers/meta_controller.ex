@@ -7,7 +7,7 @@ defmodule FastApiWeb.MetaController do
     Repo.Metadata
     |> Repo.all()
     |> Enum.map(fn
-      %{data: ""} = meta -> meta
+      %{data: data} = meta when is_nil(data) or data == "" -> meta
       meta -> %Repo.Metadata{meta | data: Jason.decode!(meta.data)}
     end)
     |> then(&json(conn, &1))
