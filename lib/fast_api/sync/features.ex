@@ -17,9 +17,11 @@ defmodule FastApi.Sync.Features do
     |> Enum.map(fn {table, changes} -> repo.changeset(table, changes) end)
     |> Enum.each(&Repo.update/1)
 
+    json_data = Jason.encode!(%{updated_at: DateTime.utc_now() |> DateTime.to_string()})
+
     Repo.Metadata
     |> Repo.get_by(name: metadata_name(repo))
-    |> Repo.Metadata.changeset(%{data: DateTime.to_string(DateTime.utc_now())})
+    |> Repo.Metadata.changeset(%{data: json_data})
     |> Repo.update()
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
