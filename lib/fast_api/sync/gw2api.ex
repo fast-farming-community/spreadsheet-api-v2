@@ -107,7 +107,7 @@ defmodule FastApi.Sync.GW2API do
     ids
     |> Enum.chunk_every(@step)
     |> Enum.flat_map(fn chunk ->
-      Finch.build(:get, "#{base_url}?ids=#{Jason.encode!(chunk)}")
+      Finch.build(:get, "#{base_url}?ids=#{Enum.join(chunk, ",")}")
       |> request_json()
     end)
     |> Enum.map(&keys_to_atoms/1)
