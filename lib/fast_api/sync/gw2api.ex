@@ -72,9 +72,10 @@ defmodule FastApi.Sync.GW2API do
     )
     |> Repo.all()
     |> then(&Enum.zip(&1, get_details(Enum.map(&1, fn item -> item.id end), @prices)))
-    |> Enum.map(fn {%Repo.Item{vendor_value: vendor_value} = item, %{buy: buy} = changes} ->
+    |> Enum.map(fn {%Repo.Item{vendor_value: vendor_value} = item,
+                    %{buys: %{"unit_price" => buy} = buys} = changes} ->
       buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
-      Repo.Item.changeset(item, %{changes | buy: buy || vendor_value})
+      Repo.Item.changeset(item, %{changes | buys: %{buys | "unit_price" => buy || vendor_value}})
     end)
     |> Enum.each(&Repo.update/1)
   end
@@ -127,15 +128,19 @@ defmodule FastApi.Sync.GW2API do
     |> request_json()
   end
 
-  defp request_json(request) do
+  defp request_json(request, retry \\ 0) do
     request
     |> Finch.request(FastApi.Finch)
     |> then(fn
       {:ok, %Finch.Response{body: body}} ->
         Jason.decode!(body)
 
+      {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
+        request_json(request, retry + 1)
+
       {:error, error} ->
         Logger.error("Error requesting #{request.path}: #{inspect(error)}")
+        []
     end)
   end
 
