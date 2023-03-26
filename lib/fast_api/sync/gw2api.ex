@@ -72,9 +72,9 @@ defmodule FastApi.Sync.GW2API do
     )
     |> Repo.all()
     |> then(&Enum.zip(&1, get_details(Enum.map(&1, fn item -> item.id end), @prices)))
-    |> Enum.map(fn {%Repo.Item{buy: buy, vendor_value: vendor_value} = item, changes} ->
-      item = %Repo.Item{item | buy: buy || vendor_value}
-      Repo.Item.changeset(item, changes)
+    |> Enum.map(fn {%Repo.Item{vendor_value: vendor_value} = item, %{buy: buy} = changes} ->
+      buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
+      Repo.Item.changeset(item, %{changes | buy: buy || vendor_value})
     end)
     |> Enum.each(&Repo.update/1)
   end
