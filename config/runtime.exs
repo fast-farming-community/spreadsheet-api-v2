@@ -68,7 +68,8 @@ if config_env() == :prod do
       {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.DetailTable]}},
-      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.Table]}}
+      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.Table]}},
+      {"@daily", {FastApi.Sync.Indexer, :execute, []}}
     ]
 
   # ## Configuring the mailer
