@@ -34,34 +34,41 @@ defmodule FastApi.Sync.Features do
 
     Logger.info("Fetching table chunk #{idx + 1}/#{total}.")
 
-    {:ok, response} =
-      GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
-        connection,
-        "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
-        ranges: Enum.map(tables, & &1.range),
-        valueRenderOption: "UNFORMATTED_VALUE",
-        dateTimeRenderOption: "FORMATTED_STRING"
-      )
-
+    connection
+    |> GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
+      "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
+      ranges: Enum.map(tables, & &1.range),
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "FORMATTED_STRING"
+    )
+    |> process_response(tables)
     # Give Google some time to rest
-    Process.sleep(200)
+    |> tap(fn -> Process.sleep(200) end)
+  end
 
+  defp metadata_name(FastApi.Repos.Fast.Table), do: "main"
+  defp metadata_name(FastApi.Repos.Fast.DetailTable), do: "detail"
+
+  defp process_response({:ok, response}, tables) do
     tables
     |> Enum.zip(response.valueRanges)
     |> Enum.map(fn {%_{} = table, %ValueRange{values: values}} ->
       [headers | rows] = values
       headers = Enum.map(headers, &String.replace(&1, ~r/[\W_]+/, ""))
 
-      for row <- rows do
+      rows
+      |> Enum.map(fn row ->
         headers
         |> Enum.zip(row)
         |> Enum.into(%{})
-      end
+      end)
       |> Jason.encode!()
       |> then(&{table, %{rows: &1}})
     end)
   end
 
-  defp metadata_name(FastApi.Repos.Fast.Table), do: "main"
-  defp metadata_name(FastApi.Repos.Fast.DetailTable), do: "detail"
+  defp process_repsonse({:error, %{body: error}}, _) do
+    Logger.error("Error while fetching spreadsheet data: #{inspect(error)}")
+    []
+  end
 end
