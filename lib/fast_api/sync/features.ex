@@ -34,6 +34,9 @@ defmodule FastApi.Sync.Features do
 
     Logger.info("Fetching table chunk #{idx + 1}/#{total}.")
 
+    # Give Google some time to rest
+    Process.sleep(200)
+
     connection
     |> GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
       "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
@@ -42,8 +45,6 @@ defmodule FastApi.Sync.Features do
       dateTimeRenderOption: "FORMATTED_STRING"
     )
     |> process_response(tables)
-    # Give Google some time to rest
-    |> tap(fn -> Process.sleep(200) end)
   end
 
   defp metadata_name(FastApi.Repos.Fast.Table), do: "main"
