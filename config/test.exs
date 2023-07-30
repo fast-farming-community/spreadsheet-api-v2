@@ -13,12 +13,18 @@ config :fast_api, FastApi.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 10
 
+secret_key = "ih4cDxQd4vOY/WlfymlhKUhT/QTCdBYMtxjm50Oc5uUPyApy5ql7XJHXV+9pmfq/"
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :fast_api, FastApiWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "ih4cDxQd4vOY/WlfymlhKUhT/QTCdBYMtxjm50Oc5uUPyApy5ql7XJHXV+9pmfq/",
+  secret_key_base: secret_key,
   server: false
+
+config :fast_api, FastApi.Guardian,
+  issuer: "fast_api",
+  secret_key: secret_key
 
 config :fast_api,
   mongo_host: "localhost:27017",

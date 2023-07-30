@@ -1,4 +1,4 @@
-defmodule FastApi.Repos.Fast.Migrations.ItemsCustomPrimaryKey do
+defmodule FastApi.Repo.Migrations.ItemsCustomPrimaryKey do
   use Ecto.Migration
 
   def change do

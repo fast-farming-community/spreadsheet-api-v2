@@ -1,5 +1,6 @@
 defmodule FastApi.Sync.Features do
-  alias FastApi.Repos.Fast, as: Repo
+  alias FastApi.Repo
+  alias FastApi.Schemas.Fast
   alias GoogleApi.Sheets.V4.Model.ValueRange
 
   require Logger
@@ -19,20 +20,15 @@ defmodule FastApi.Sync.Features do
 
     json_data = Jason.encode!(%{updated_at: DateTime.utc_now() |> DateTime.to_string()})
 
-    case Repo.get_by(Repo.Metadata, name: metadata_name(repo)) do
-      nil ->
-        Repo.insert(%Repo.Metadata{name: metadata_name(repo), data: json_data})
-
-      metadata ->
-        metadata
-        |> Repo.Metadata.changeset(%{data: json_data})
-        |> Repo.update()
-    end
+    Fast.Metadata
+    |> Repo.get_by(name: metadata_name(repo))
+    |> Fast.Metadata.changeset(%{data: json_data})
+    |> Repo.update()
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end
 
-  @spec get_spreadsheet_tables([Repo.Table.t()], non_neg_integer()) :: [{Repo.Table.t(), map()}]
+  @spec get_spreadsheet_tables([Fast.Table.t()], non_neg_integer()) :: [{Fast.Table.t(), map()}]
   defp get_spreadsheet_tables({tables, idx}, total) do
     {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
@@ -52,8 +48,8 @@ defmodule FastApi.Sync.Features do
     |> process_response(tables)
   end
 
-  defp metadata_name(FastApi.Repos.Fast.Table), do: "main"
-  defp metadata_name(FastApi.Repos.Fast.DetailTable), do: "detail"
+  defp metadata_name(FastApi.Schemas.Fast.Table), do: "main"
+  defp metadata_name(FastApi.Schemas.Fast.DetailTable), do: "detail"
 
   defp process_response({:ok, response}, tables) do
     tables
@@ -73,7 +69,7 @@ defmodule FastApi.Sync.Features do
     end)
   end
 
-  defp process_repsonse({:error, %{body: error}}, _) do
+  defp process_response({:error, %{body: error}}, _) do
     Logger.error("Error while fetching spreadsheet data: #{inspect(error)}")
     []
   end
