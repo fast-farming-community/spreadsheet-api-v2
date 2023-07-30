@@ -1,7 +1,8 @@
 defmodule FastApi.Sync.GW2API do
   import Ecto.Query, only: [from: 2]
 
-  alias FastApi.Repos.Fast, as: Repo
+  alias FastApi.Repo
+  alias FastApi.Schemas.Fast
   alias Finch
 
   require Logger
@@ -66,17 +67,17 @@ defmodule FastApi.Sync.GW2API do
 
   @spec sync_prices() :: :ok
   def sync_prices do
-    from(item in Repo.Item,
+    from(item in Fast.Item,
       where: item.tradable == true,
       select: item
     )
     |> Repo.all()
     |> then(&Enum.zip(&1, get_details(Enum.map(&1, fn item -> item.id end), @prices)))
     |> Enum.map(fn
-      {%Repo.Item{id: id, vendor_value: vendor_value} = item,
+      {%Fast.Item{id: id, vendor_value: vendor_value} = item,
        %{id: id, buys: %{"unit_price" => buy} = buys} = changes} ->
         buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
-        Repo.Item.changeset(item, %{changes | buys: %{buys | "unit_price" => buy}})
+        Fast.Item.changeset(item, %{changes | buys: %{buys | "unit_price" => buy}})
 
       {item, changes} ->
         raise "Mismatching ids for item #{inspect(item)} and data #{inspect(changes)}"
@@ -89,9 +90,9 @@ defmodule FastApi.Sync.GW2API do
     sync_prices()
 
     items =
-      Repo.Item
+      Fast.Item
       |> Repo.all()
-      |> Enum.map(fn %Repo.Item{} = item ->
+      |> Enum.map(fn %Fast.Item{} = item ->
         [item.id, item.name, item.buy, item.sell, item.icon, item.rarity, item.vendor_value]
       end)
       |> Enum.sort_by(&List.first/1)
@@ -156,6 +157,6 @@ defmodule FastApi.Sync.GW2API do
   defp to_item(params, tradable \\ false) do
     params
     |> Map.put(:tradable, tradable)
-    |> then(&struct(Repo.Item, &1))
+    |> then(&struct(Fast.Item, &1))
   end
 end

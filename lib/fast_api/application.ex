@@ -11,7 +11,7 @@ defmodule FastApi.Application do
       List.flatten([
         prod_only_processes(Mix.env()),
         {Finch, name: FastApi.Finch},
-        FastApi.Repos.Fast,
+        FastApi.Repo,
         FastApi.Scheduler,
         # Start the Telemetry supervisor
         FastApiWeb.Telemetry,

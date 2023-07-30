@@ -7,9 +7,6 @@
 # General application configuration
 import Config
 
-config :fast_api,
-  ecto_repos: [FastApi.Repo]
-
 # Configures the endpoint
 config :fast_api, FastApiWeb.Endpoint,
   url: [host: "localhost"],
@@ -30,10 +27,9 @@ config :fast_api,
 # at the `config/runtime.exs`.
 config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
 
-config :fast_api,
-  ecto_repos: [FastApi.Repos.Fast]
+config :fast_api, ecto_repos: [FastApi.Repo]
 
-config :fast_api, FastApi.Repos.Fast, priv: "priv/fast"
+config :fast_api, FastApi.Repo, priv: "priv/fast"
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false

@@ -1,4 +1,4 @@
-defmodule FastApi.Repos.Fast.Migrations.Gw2Items do
+defmodule FastApi.Repo.Migrations.Gw2Items do
   use Ecto.Migration
 
   def change do

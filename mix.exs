@@ -33,11 +33,13 @@ defmodule FastApi.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:bcrypt_elixir, "~> 2.0"},
       {:cors_plug, "~> 2.0"},
       {:ecto_sql, "~> 3.6"},
       {:gettext, "~> 0.18"},
       {:google_api_sheets, "~> 0.29.3"},
       {:goth, "~> 1.3.0"},
+      {:guardian, "~> 2.0"},
       {:jason, "~> 1.2"},
       {:phoenix, "~> 1.6.2"},
       {:phoenix_ecto, "~> 4.4"},

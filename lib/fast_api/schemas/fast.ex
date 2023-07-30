@@ -1,9 +1,8 @@
-defmodule FastApi.Repos.Fast do
-  use Ecto.Repo, otp_app: :fast_api, adapter: Ecto.Adapters.Postgres
+defmodule FastApi.Schemas.Fast do
+  @moduledoc """
+  Schemas for static content and spreadsheet data
+  """
 
-  #########################################################################################
-  # CONTENT
-  #########################################################################################
   defmodule About do
     use Ecto.Schema
 
@@ -83,7 +82,7 @@ defmodule FastApi.Repos.Fast do
     @derive {Jason.Encoder, only: [:name, :detail_tables]}
     schema "detail_features" do
       field(:name, :string)
-      has_many(:detail_tables, FastApi.Repos.Fast.DetailTable)
+      has_many(:detail_tables, FastApi.Schemas.Fast.DetailTable)
       field(:published, :boolean)
 
       timestamps()
@@ -97,7 +96,7 @@ defmodule FastApi.Repos.Fast do
     @derive {Jason.Encoder, only: [:description, :key, :name, :rows]}
     schema "detail_tables" do
       field(:description, :string)
-      belongs_to(:detail_feature, FastApi.Repos.Fast.DetailFeature)
+      belongs_to(:detail_feature, FastApi.Schemas.Fast.DetailFeature)
       field(:key, :string)
       field(:name, :string)
       field(:range, :string)
@@ -119,7 +118,7 @@ defmodule FastApi.Repos.Fast do
     @derive {Jason.Encoder, only: [:name, :pages]}
     schema "features" do
       field(:name, :string)
-      has_many(:pages, FastApi.Repos.Fast.Page)
+      has_many(:pages, FastApi.Schemas.Fast.Page)
       field(:published, :boolean)
 
       timestamps()
@@ -190,10 +189,10 @@ defmodule FastApi.Repos.Fast do
 
     @derive {Jason.Encoder, only: [:name, :tables]}
     schema "pages" do
-      belongs_to(:feature, FastApi.Repos.Fast.Feature)
+      belongs_to(:feature, FastApi.Schemas.Fast.Feature)
       field(:name, :string)
       field(:published, :boolean)
-      has_many(:tables, FastApi.Repos.Fast.Table)
+      has_many(:tables, FastApi.Schemas.Fast.Table)
 
       timestamps()
     end
@@ -208,7 +207,7 @@ defmodule FastApi.Repos.Fast do
       field(:description, :string)
       field(:name, :string)
       field(:order, :integer)
-      belongs_to(:page, FastApi.Repos.Fast.Page)
+      belongs_to(:page, FastApi.Schemas.Fast.Page)
       field(:published, :boolean)
       field(:range, :string)
       field(:rows, :string)

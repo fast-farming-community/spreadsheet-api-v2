@@ -1,7 +1,8 @@
 defmodule FastApiWeb.DetailController do
   use FastApiWeb, :controller
 
-  alias FastApi.Repos.Fast, as: Repo
+  alias FastApi.Repo
+  alias FastApi.Schemas.Fast
 
   import Ecto.Query
 
@@ -9,9 +10,9 @@ defmodule FastApiWeb.DetailController do
     %{"Category" => category} = detail = get_detail(module, collection, item)
 
     {list, description} =
-      from(t in Repo.DetailTable,
+      from(t in Fast.DetailTable,
         where: t.key == ^item,
-        join: f in Repo.DetailFeature,
+        join: f in Fast.DetailFeature,
         on: t.detail_feature_id == f.id,
         where: f.name == ^category,
         select: %{rows: t.rows, description: t.description}
@@ -27,8 +28,8 @@ defmodule FastApiWeb.DetailController do
     if String.contains?(module, "details") do
       module = String.replace(module, "-details", "")
 
-      from(t in Repo.DetailTable,
-        join: f in Repo.DetailFeature,
+      from(t in Fast.DetailTable,
+        join: f in Fast.DetailFeature,
         on: t.detail_feature_id == f.id,
         where: f.name == ^module and t.key == ^collection,
         select: t.rows
@@ -40,7 +41,7 @@ defmodule FastApiWeb.DetailController do
         _ -> false
       end)
     else
-      Repo.Page
+      Fast.Page
       |> Repo.get_by(name: collection)
       |> Repo.preload(:tables)
       |> then(fn page -> Enum.flat_map(page.tables, &Jason.decode!(&1.rows)) end)

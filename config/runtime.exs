@@ -48,6 +48,10 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  config :fast_api, FastApi.Guardian,
+    issuer: "fast_api",
+    secret_key: secret_key_base
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """
@@ -57,7 +61,7 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6"), do: [:inet6], else: []
 
-  config :fast_api, FastApi.Repos.Fast,
+  config :fast_api, FastApi.Repo,
     # ssl: true,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
@@ -67,8 +71,8 @@ if config_env() == :prod do
     jobs: [
       {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-      {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.DetailTable]}},
-      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.Table]}},
+      {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
+      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
       {"@daily", {FastApi.Sync.Indexer, :execute, []}}
     ]
 

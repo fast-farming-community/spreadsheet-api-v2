@@ -1,6 +1,6 @@
 import Config
 
-config :fast_api, FastApi.Repos.Fast,
+config :fast_api, FastApi.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
@@ -8,6 +8,8 @@ config :fast_api, FastApi.Repos.Fast,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
+
+secret_key = "yxwt7JC4UkmUV307Qu2gjS+RgMisRtcdCruJUNwQrXRafqPuGb7ZXPzx9e8RmsaO"
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -18,8 +20,12 @@ config :fast_api, FastApiWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "yxwt7JC4UkmUV307Qu2gjS+RgMisRtcdCruJUNwQrXRafqPuGb7ZXPzx9e8RmsaO",
+  secret_key_base: secret_key,
   watchers: []
+
+config :fast_api, FastApi.Guardian,
+  issuer: "fast_api",
+  secret_key: secret_key
 
 # ## SSL Support
 #
