@@ -65,7 +65,7 @@ if config_env() == :prod do
 
   config :fast_api, FastApi.Scheduler,
     jobs: [
-      {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
+      # {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.DetailTable]}},
       {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.Table]}},

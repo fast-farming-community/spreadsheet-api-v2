@@ -19,10 +19,15 @@ defmodule FastApi.Sync.Features do
 
     json_data = Jason.encode!(%{updated_at: DateTime.utc_now() |> DateTime.to_string()})
 
-    Repo.Metadata
-    |> Repo.get_by(name: metadata_name(repo))
-    |> Repo.Metadata.changeset(%{data: json_data})
-    |> Repo.update()
+    case Repo.get_by(Repo.Metadata, name: metadata_name(repo)) do
+      nil ->
+        Repo.insert(%Repo.Metadata{name: metadata_name(repo), data: json_data})
+
+      metadata ->
+        metadata
+        |> Repo.Metadata.changeset(%{data: json_data})
+        |> Repo.update()
+    end
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end

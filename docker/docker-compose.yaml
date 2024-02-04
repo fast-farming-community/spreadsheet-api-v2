@@ -14,6 +14,18 @@ services:
     restart: unless-stopped
     volumes:
       - postgres:/data/postgres
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: always
+    networks:
+      - test-network
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: be.samwolfs@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin:/data/pgadmin
 
 networks:
   test-network:
@@ -21,3 +33,4 @@ networks:
 
 volumes:
   postgres:
+  pgadmin:
