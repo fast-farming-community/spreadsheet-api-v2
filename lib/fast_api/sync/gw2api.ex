@@ -71,7 +71,7 @@ defmodule FastApi.Sync.GW2API do
       select: item
     )
     |> Repo.all()
-    |> then(&Enum.zip(&1, get_details(Enum.map(&1, fn item -> item.id end), @prices)))
+    |> get_item_details()
     |> Enum.each(fn
       {%Repo.Item{id: id, vendor_value: vendor_value} = item,
        %{id: id, buys: %{"unit_price" => buy} = buys} = changes} ->
@@ -83,6 +83,29 @@ defmodule FastApi.Sync.GW2API do
 
       {item, changes} ->
         Logger.error("Mismatching ids for item #{inspect(item)} and data #{inspect(changes)}")
+    end)
+  end
+
+  defp get_item_details(items) do
+    items
+    |> Enum.chunk_every(@step)
+    |> Enum.flat_map(fn chunk ->
+      req_url = "#{@prices}?ids=#{Enum.map_join(chunk, ",", & &1.id)}"
+
+      result = Finch.build(:get, req_url) |> request_json() |> Enum.map(&keys_to_atoms/1)
+      result_ids = Enum.map(result, & &1.id)
+
+      # TODO: Maybe instead return `nil` for mismatching items and have the DB step
+      # take care of removing mismatching items
+      case Enum.split_with(chunk, fn item -> item.id in result_ids end) do
+        {_, []} ->
+          Enum.zip(chunk, result)
+
+        {matching, mismatching} ->
+          Logger.error("Found mismatching items: #{inspect(mismatching)}")
+          Enum.each(mismatching, &Repo.delete/1)
+          Enum.zip(matching, result)
+      end
     end)
   end
 
@@ -114,7 +137,18 @@ defmodule FastApi.Sync.GW2API do
     ids
     |> Enum.chunk_every(@step)
     |> Enum.flat_map(fn chunk ->
-      Finch.build(:get, "#{base_url}?ids=#{Enum.join(chunk, ",")}") |> request_json()
+      req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
+
+      Finch.build(:get, req_url)
+      |> request_json()
+      |> tap(fn
+        result when length(result) == length(chunk) ->
+          :ok
+
+        result ->
+          missing_ids = chunk -- Enum.map(result, &Map.get(&1, "id"))
+          Logger.error("Missing IDs for #{req_url}: #{inspect(missing_ids)}")
+      end)
     end)
     |> Enum.map(&keys_to_atoms/1)
   end
