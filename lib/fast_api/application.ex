@@ -17,7 +17,7 @@ defmodule FastApi.Application do
       # Start the PubSub system
       {Phoenix.PubSub, name: FastApi.PubSub},
       # Start the Endpoint (http/https)
-      FastApiWeb.Endpoint,
+      FastApiWeb.Endpoint
       # Start a worker by calling: FastApi.Worker.start_link(arg)
       # {FastApi.Worker, arg}
     ]

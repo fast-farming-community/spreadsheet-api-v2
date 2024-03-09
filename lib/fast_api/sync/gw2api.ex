@@ -72,17 +72,18 @@ defmodule FastApi.Sync.GW2API do
     )
     |> Repo.all()
     |> then(&Enum.zip(&1, get_details(Enum.map(&1, fn item -> item.id end), @prices)))
-    |> Enum.map(fn
+    |> Enum.each(fn
       {%Repo.Item{id: id, vendor_value: vendor_value} = item,
        %{id: id, buys: %{"unit_price" => buy} = buys} = changes} ->
         buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
-        Repo.Item.changeset(item, %{changes | buys: %{buys | "unit_price" => buy}})
+
+        item
+        |> Repo.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
+        |> Repo.update()
 
       {item, changes} ->
-        raise "Mismatching ids for item #{inspect(item)} and data #{inspect(changes)}"
+        Logger.error("Mismatching ids for item #{inspect(item)} and data #{inspect(changes)}")
     end)
-    |> List.flatten()
-    |> Enum.each(&Repo.update/1)
   end
 
   def sync_sheet do
