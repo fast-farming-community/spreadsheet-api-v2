@@ -103,7 +103,6 @@ defmodule FastApi.Sync.GW2API do
 
         {matching, mismatching} ->
           Logger.error("Found mismatching items: #{inspect(mismatching)}")
-          Enum.each(mismatching, &Repo.delete/1)
           Enum.zip(matching, result)
       end
     end)
