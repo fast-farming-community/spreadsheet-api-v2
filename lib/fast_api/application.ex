@@ -28,6 +28,9 @@ defmodule FastApi.Application do
     Supervisor.start_link(children, opts)
   end
 
+  defp prod_only_processes(true), do: []
+  defp prod_only_processes(_), do: []
+
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.
   @impl true
