@@ -2,34 +2,26 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres
+    image: docker.io/postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       PGDATA: /data/postgres
-    networks:
-      - test-network
     ports:
       - "5432:5432"
     restart: unless-stopped
     volumes:
       - postgres:/data/postgres
   pgadmin:
-    image: dpage/pgadmin4
+    image: docker.io/dpage/pgadmin4
     restart: always
-    networks:
-      - test-network
     ports:
       - "8888:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: be.samwolfs@gmail.com
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
     volumes:
       - pgadmin:/data/pgadmin
-
-networks:
-  test-network:
-    driver: bridge
 
 volumes:
   postgres:

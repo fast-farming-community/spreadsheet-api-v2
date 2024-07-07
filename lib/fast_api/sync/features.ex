@@ -30,7 +30,7 @@ defmodule FastApi.Sync.Features do
 
   @spec get_spreadsheet_tables([Fast.Table.t()], non_neg_integer()) :: [{Fast.Table.t(), map()}]
   defp get_spreadsheet_tables({tables, idx}, total) do
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
+    {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
     Logger.info("Fetching table chunk #{idx + 1}/#{total}.")

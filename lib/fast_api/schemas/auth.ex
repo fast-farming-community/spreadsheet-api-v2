@@ -3,6 +3,16 @@ defmodule FastApi.Schemas.Auth do
   Schemas for user authentication and authorization
   """
 
+  defmodule Role do
+    use Ecto.Schema
+
+    schema "roles" do
+      field :role, :string
+
+      timestamps()
+    end
+  end
+
   defmodule User do
     use Ecto.Schema
     import Ecto.Changeset
@@ -11,6 +21,7 @@ defmodule FastApi.Schemas.Auth do
     schema "users" do
       field :email, :string
       field :password, :string
+      has_one :role, FastApi.Schemas.Auth.Role
       field :token, :string
 
       timestamps()
@@ -19,22 +30,21 @@ defmodule FastApi.Schemas.Auth do
     def changeset(user, params) do
       user
       |> cast(params, [:email, :password, :token])
-      |> validate_required([:email, :username])
+      |> validate_required([:email, :password])
       |> validate_email()
       |> put_hash()
     end
 
-    defp validate_email(%Ecto.Changeset{valid?: true, changes: %{email: email}} = changeset) do
+    defp validate_email(%Ecto.Changeset{valid?: true} = changeset) do
       changeset
       |> validate_format(:email, ~r/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/,
         message: "must be a valid email address"
       )
-      |> change(add_hash(email, hash_key: :email_hash))
       |> unique_constraint(:users_unique_id)
     end
 
     defp put_hash(%Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset) do
-      change(changeset, add_hash(password, hash_key: :password_hash))
+      change(changeset, password: hash_pwd_salt(password))
     end
 
     defp put_hash(changeset), do: changeset

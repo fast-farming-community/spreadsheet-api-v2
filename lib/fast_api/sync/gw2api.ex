@@ -29,7 +29,7 @@ defmodule FastApi.Sync.GW2API do
         end)
       end)
 
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
+    {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
     {:ok, _response} =
@@ -72,12 +72,15 @@ defmodule FastApi.Sync.GW2API do
       select: item
     )
     |> Repo.all()
-    |> then(&Enum.zip(&1, get_details(Enum.map(&1, fn item -> item.id end), @prices)))
-    |> Enum.map(fn
+    |> get_item_details()
+    |> Enum.each(fn
       {%Fast.Item{id: id, vendor_value: vendor_value} = item,
        %{id: id, buys: %{"unit_price" => buy} = buys} = changes} ->
         buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
-        Fast.Item.changeset(item, %{changes | buys: %{buys | "unit_price" => buy}})
+
+        item
+        |> Fast.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
+        |> Repo.update()
 
       {item, changes} ->
         Logger.error("Mismatching ids for item #{inspect(item)} and data #{inspect(changes)}")
@@ -117,7 +120,7 @@ defmodule FastApi.Sync.GW2API do
       end)
       |> Enum.sort_by(&List.first/1)
 
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
+    {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
     {:ok, _response} =

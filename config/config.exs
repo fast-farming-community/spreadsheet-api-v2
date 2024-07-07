@@ -14,10 +14,6 @@ config :fast_api, FastApiWeb.Endpoint,
   pubsub_server: FastApi.PubSub,
   live_view: [signing_salt: "N7gdh9BX"]
 
-config :fast_api,
-  cockpit_token: System.get_env("COCKPIT_TOKEN"),
-  cockpit_url: "https://fast.farming-community.eu/cockpit/api/collection/get/"
-
 # Configures the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

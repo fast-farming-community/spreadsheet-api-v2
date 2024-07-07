@@ -2,10 +2,11 @@ defmodule FastApiWeb.UserController do
   use FastApiWeb, :controller
 
   alias FastApi.Auth
+  alias FastApi.Schemas.Auth.User
 
   def create(conn, %{"user" => user_params}) do
     with {:ok, %User{} = user} <- Auth.create_user(user_params) do
-      {:ok, token, _} = encode_and_sign(user)
+      {:ok, token, _} = Auth.Token.encode_and_sign(user)
 
       json(conn, %{token: token})
     end
@@ -14,12 +15,12 @@ defmodule FastApiWeb.UserController do
   def login(conn, %{"user" => %{"email" => email, "password" => password}}) do
     user = Auth.get_user_by_email(email)
 
-    case Bcrypt.check_pass(user, password, hash_key: :password) do
+    case Bcrypt.verify_pass(password, user.password) do
       {:error, msg} ->
         send_resp(conn, :unauthorized, msg)
 
       _ ->
-        {:ok, token, _} = encode_and_sign(user)
+        {:ok, token, _} = Auth.Token.encode_and_sign(user)
         json(conn, %{token: token})
     end
   end
