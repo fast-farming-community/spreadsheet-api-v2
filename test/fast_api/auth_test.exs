@@ -1,14 +1,10 @@
 defmodule FastApi.AuthTest do
   @moduledoc false
-  use ExUnit.Case
+  use FastApiWeb.ConnCase
 
   alias FastApi.Auth
   alias FastApi.Utils.Ecto, as: EctoUtils
   alias FastApi.Schemas.Auth.User
-
-  setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(FastApi.Repo)
-  end
 
   @default_user_attributes %{
     email: "user@fast.farming-community.eu",

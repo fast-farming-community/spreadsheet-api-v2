@@ -48,7 +48,7 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
-  config :fast_api, FastApi.Guardian,
+  config :fast_api, FastApi.Auth.Token,
     issuer: "fast_api",
     secret_key: secret_key_base
 

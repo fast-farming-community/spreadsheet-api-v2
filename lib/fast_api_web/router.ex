@@ -16,6 +16,9 @@ defmodule FastApiWeb.Router do
   scope "/api/v1", FastApiWeb do
     pipe_through :api
 
+    post "/auth/signup", UserController, :create
+    post "/auth/login", UserController, :login
+
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds
     get "/contributors", ContentController, :contributors

@@ -23,7 +23,7 @@ config :fast_api, FastApiWeb.Endpoint,
   secret_key_base: secret_key,
   watchers: []
 
-config :fast_api, FastApi.Guardian,
+config :fast_api, FastApi.Auth.Token,
   issuer: "fast_api",
   secret_key: secret_key
 

@@ -3,7 +3,6 @@ defmodule FastApi.Sync.GW2API do
 
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
-  alias Finch
 
   require Logger
 
