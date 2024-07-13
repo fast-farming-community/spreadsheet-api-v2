@@ -20,7 +20,6 @@ defmodule FastApi.Repo.Migrations.CreateUsers do
     end
 
     create unique_index("users", :email, name: :users_unique_id)
-
     create unique_index("roles", :name, name: :roles_unique_id)
   end
 end
