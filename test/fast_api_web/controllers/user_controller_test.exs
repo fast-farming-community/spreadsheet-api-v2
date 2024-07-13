@@ -34,4 +34,36 @@ defmodule FastApiWeb.Controllers.UserControllerTest do
                })
     end
   end
+
+  describe "login" do
+    test "Sunny day" do
+      assert {:ok, %{token: _}} =
+               HttpClient.post("auth/signup", %{
+                 email: "user@fast-farming-community.eu",
+                 password: "Fast4Life!!!",
+                 password_confirmation: "Fast4Life!!!"
+               })
+
+      assert {:ok, %{token: _}} =
+               HttpClient.post("auth/login", %{
+                 email: "user@fast-farming-community.eu",
+                 password: "Fast4Life!!!"
+               })
+    end
+
+    test "Invalid password" do
+      assert {:ok, %{token: _}} =
+               HttpClient.post("auth/signup", %{
+                 email: "user@fast-farming-community.eu",
+                 password: "Fast4Life!!!",
+                 password_confirmation: "Fast4Life!!!"
+               })
+
+      assert {:ok, %{error: "Invalid username/password combination"}} =
+               HttpClient.post("auth/login", %{
+                 email: "user@fast-farming-community.eu",
+                 password: "Cornix4Life!!!"
+               })
+    end
+  end
 end

@@ -19,16 +19,16 @@ defmodule FastApiWeb.UserController do
     end
   end
 
-  def login(conn, %{"user" => %{"email" => email, "password" => password}}) do
+  def login(conn, %{"email" => email, "password" => password}) do
     user = Auth.get_user_by_email(email)
 
-    case Bcrypt.verify_pass(password, user.password) do
-      {:error, msg} ->
-        send_resp(conn, :unauthorized, msg)
-
-      _ ->
-        {:ok, token, _} = Auth.Token.encode_and_sign(user)
-        json(conn, %{token: token})
+    if Bcrypt.verify_pass(password, user.password) do
+      {:ok, token, _} = Auth.Token.encode_and_sign(user)
+      json(conn, %{token: token})
+    else
+      conn
+      |> Plug.Conn.put_status(:unauthorized)
+      |> json(%{error: "Invalid username/password combination"})
     end
   end
 end
