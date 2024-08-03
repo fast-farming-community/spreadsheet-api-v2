@@ -3,8 +3,8 @@ defmodule FastApi.Repo.Migrations.CreateUsers do
 
   def change do
     # roles
-    create table("roles") do
-      add :name, :string
+    create table("roles", primary_key: false) do
+      add :name, :string, primary_key: true
 
       timestamps()
     end
@@ -14,12 +14,11 @@ defmodule FastApi.Repo.Migrations.CreateUsers do
       add :email, :string
       add :password, :string
       add :token, :string
-      add :role, references(:roles)
+      add :role_id, references(:roles, type: :string, column: :name)
 
       timestamps()
     end
 
     create unique_index("users", :email, name: :users_unique_id)
-    create unique_index("roles", :name, name: :roles_unique_id)
   end
 end

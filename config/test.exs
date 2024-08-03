@@ -27,7 +27,7 @@ config :fast_api, FastApi.Auth.Token,
   secret_key: secret_key
 
 # In test we don't send emails.
-config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Test
+# config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Test
 
 # Print only warnings and errors during test
 config :logger, level: :warning

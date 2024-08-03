@@ -9,3 +9,14 @@
 #
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
+alias FastApi.Schemas.Auth.Role
+
+Enum.each(
+  ["soldier", "legionnaire", "tribune", "khan-ur"],
+  fn role ->
+    case FastApi.Repo.get_by(Role, name: role) do
+      %Role{} -> :ok
+      _ -> FastApi.Repo.insert!(%Role{name: role})
+    end
+  end
+)

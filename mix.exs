@@ -36,6 +36,7 @@ defmodule FastApi.MixProject do
       {:bcrypt_elixir, "~> 3.0"},
       {:cors_plug, "~> 2.0"},
       {:ecto_sql, "~> 3.6"},
+      {:gen_smtp, "~> 1.1"},
       {:gettext, "~> 0.18"},
       {:google_api_sheets, "~> 0.29.3"},
       {:goth, "~> 1.3.0"},

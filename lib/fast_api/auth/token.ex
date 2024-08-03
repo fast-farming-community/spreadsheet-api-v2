@@ -13,4 +13,20 @@ defmodule FastApi.Auth.Token do
   rescue
     Ecto.NoResultsError -> {:error, :resource_not_found}
   end
+
+  def access_token(user, opts \\ []) do
+    encode_and_sign(
+      user,
+      %{role: Auth.get_user_role(user)},
+      [ttl: Application.fetch_env!(:fast_api, :access_token_ttl)] ++ opts
+    )
+  end
+
+  def refresh_token(user, opts \\ []) do
+    encode_and_sign(
+      user,
+      %{role: Auth.get_user_role(user)},
+      [token_type: "refresh", ttl: Application.fetch_env!(:fast_api, :refresh_token_ttl)] ++ opts
+    )
+  end
 end

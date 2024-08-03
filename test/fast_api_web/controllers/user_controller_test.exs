@@ -10,12 +10,14 @@ defmodule FastApiWeb.Controllers.UserControllerTest do
 
   describe "Signup" do
     test "Sunny day" do
-      assert {:ok, %{token: _}} =
+      assert {:ok, tokens} =
                HttpClient.post("auth/signup", %{
                  email: "user@fast-farming-community.eu",
                  password: "Fast4Life!!!",
                  password_confirmation: "Fast4Life!!!"
                })
+
+      verify_tokens(tokens)
     end
 
     test "Invalid email and password" do
@@ -37,22 +39,26 @@ defmodule FastApiWeb.Controllers.UserControllerTest do
 
   describe "login" do
     test "Sunny day" do
-      assert {:ok, %{token: _}} =
+      assert {:ok, tokens} =
                HttpClient.post("auth/signup", %{
                  email: "user@fast-farming-community.eu",
                  password: "Fast4Life!!!",
                  password_confirmation: "Fast4Life!!!"
                })
 
-      assert {:ok, %{token: _}} =
+      verify_tokens(tokens)
+
+      assert {:ok, tokens} =
                HttpClient.post("auth/login", %{
                  email: "user@fast-farming-community.eu",
                  password: "Fast4Life!!!"
                })
+
+      verify_tokens(tokens)
     end
 
     test "Invalid password" do
-      assert {:ok, %{token: _}} =
+      assert {:ok, %{access: _}} =
                HttpClient.post("auth/signup", %{
                  email: "user@fast-farming-community.eu",
                  password: "Fast4Life!!!",
@@ -65,5 +71,50 @@ defmodule FastApiWeb.Controllers.UserControllerTest do
                  password: "Cornix4Life!!!"
                })
     end
+  end
+
+  describe "refresh" do
+    test "Sunny day" do
+      assert {:ok, %{refresh: refresh}} =
+               HttpClient.post("auth/signup", %{
+                 email: "user@fast-farming-community.eu",
+                 password: "Fast4Life!!!",
+                 password_confirmation: "Fast4Life!!!"
+               })
+
+      assert {:ok, tokens} = HttpClient.post("auth/refresh", %{token: refresh})
+
+      verify_tokens(tokens)
+    end
+
+    test "Expired refresh token" do
+      temp_env(:refresh_token_ttl, {1, :seconds})
+
+      assert {:ok, %{refresh: refresh}} =
+               HttpClient.post("auth/signup", %{
+                 email: "user@fast-farming-community.eu",
+                 password: "Fast4Life!!!",
+                 password_confirmation: "Fast4Life!!!"
+               })
+
+      Process.sleep(2_000)
+
+      assert {:ok, %{error: "Invalid or Expired Refresh Token"}} =
+               HttpClient.post("auth/refresh", %{token: refresh})
+    end
+  end
+
+  defp temp_env(key, value) do
+    original_value = Application.fetch_env!(:fast_api, key)
+    Application.put_env(:fast_api, key, value)
+    on_exit(fn -> Application.put_env(:fast_api, key, original_value) end)
+  end
+
+  defp verify_tokens(%{access: access, refresh: refresh}) do
+    assert {:ok, %{"typ" => "access"}} =
+             FastApi.Auth.Token.decode_and_verify(access, %{"role" => "soldier"})
+
+    assert {:ok, %{"typ" => "refresh"}} =
+             FastApi.Auth.Token.decode_and_verify(refresh, %{"role" => "soldier"})
   end
 end

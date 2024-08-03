@@ -13,11 +13,22 @@ defmodule FastApiWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/api/v1", FastApiWeb do
+  pipeline :secured do
+    plug FastApi.Auth.Pipeline
+  end
+
+  scope "/api/v1/auth", FastApiWeb do
     pipe_through :api
 
-    post "/auth/signup", UserController, :create
-    post "/auth/login", UserController, :login
+    post "/login", UserController, :login
+    post "/refresh", UserController, :refresh
+    post "/signup", UserController, :create
+
+    post "/change-password", UserController, :change_password
+  end
+
+  scope "/api/v1", FastApiWeb do
+    pipe_through :secured
 
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds

@@ -6,8 +6,9 @@ defmodule FastApi.Schemas.Auth do
   defmodule Role do
     use Ecto.Schema
 
+    @primary_key {:name, :string, []}
     schema "roles" do
-      field :role, :string
+      has_many :users, FastApi.Schemas.Auth.User
 
       timestamps()
     end
@@ -23,7 +24,7 @@ defmodule FastApi.Schemas.Auth do
       field :password, :string
       field :password_confirmation, :string, virtual: true
       field :old_password, :string, virtual: true
-      has_one :role, FastApi.Schemas.Auth.Role
+      belongs_to :role, FastApi.Schemas.Auth.Role, references: :name, type: :string
       field :token, :string
 
       timestamps()
@@ -32,6 +33,7 @@ defmodule FastApi.Schemas.Auth do
     def changeset(user, params, :insert) do
       user
       |> cast(params, [:email, :password, :password_confirmation])
+      |> put_change(:role_id, "soldier")
       |> validate_required([:email, :password])
       |> validate_email()
       |> validate_password()
@@ -40,7 +42,7 @@ defmodule FastApi.Schemas.Auth do
 
     def changeset(user, params, :update) do
       user
-      |> cast(params, [:old_password, :password, :password_confirmation])
+      |> cast(params, [:password, :password_confirmation])
       |> delete_change(:email)
       |> validate_required([:email, :old_password, :password])
       |> validate_email()
