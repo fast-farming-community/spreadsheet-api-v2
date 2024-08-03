@@ -10,7 +10,14 @@ defmodule FastApi.Auth do
     name
   end
 
-  def create_user(params), do: %User{} |> User.changeset(params, :insert) |> Repo.insert()
+  def init_user(params), do: %User{} |> User.changeset(params, :init) |> Repo.insert()
+
+  def create_user(%{"email" => email, "token" => token} = params) do
+    User
+    |> Repo.get_by(email: email, token: token)
+    |> User.changeset(params, :create)
+    |> Repo.update()
+  end
 
   def change_password(%User{} = user, params) do
     user |> User.changeset(params, :update) |> Repo.update()

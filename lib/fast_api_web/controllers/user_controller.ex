@@ -24,7 +24,23 @@ defmodule FastApiWeb.UserController do
     # end
   end
 
-  def create(conn, user_params) do
+  def pre_register(conn, user_params) do
+    case Auth.init_user(user_params) do
+      {:ok, %User{} = user} ->
+        user
+        |> FastApiWeb.Notifiers.PreRegistrationNotifier.pre_register()
+        |> FastApi.Mailer.deliver()
+
+        json(conn, %{success: :ok})
+
+      {:error, changeset} ->
+        conn
+        |> Plug.Conn.put_status(400)
+        |> json(%{errors: EctoUtils.get_errors(changeset)})
+    end
+  end
+
+  def register(conn, user_params) do
     case Auth.create_user(user_params) do
       {:ok, %User{} = user} ->
         login_success(conn, user)

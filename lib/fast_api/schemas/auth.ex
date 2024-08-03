@@ -23,17 +23,26 @@ defmodule FastApi.Schemas.Auth do
       field :email, :string
       field :password, :string
       field :password_confirmation, :string, virtual: true
-      field :old_password, :string, virtual: true
       belongs_to :role, FastApi.Schemas.Auth.Role, references: :name, type: :string
-      field :token, :string
+      field :token, :string, default: Ecto.UUID.generate()
+      field :verified, :boolean, default: false
 
       timestamps()
     end
 
-    def changeset(user, params, :insert) do
+    def changeset(user, params, :init) do
+      user
+      |> cast(params, [:email])
+      |> put_change(:role_id, "soldier")
+      |> validate_required([:email])
+      |> validate_email()
+    end
+
+    def changeset(user, params, :create) do
       user
       |> cast(params, [:email, :password, :password_confirmation])
-      |> put_change(:role_id, "soldier")
+      |> put_change(:token, "")
+      |> put_change(:verified, true)
       |> validate_required([:email, :password])
       |> validate_email()
       |> validate_password()

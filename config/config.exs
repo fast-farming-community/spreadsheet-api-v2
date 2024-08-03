@@ -22,13 +22,10 @@ config :fast_api, FastApiWeb.Endpoint,
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
 config :fast_api, FastApi.Mailer,
-  adapter: Swoosh.Adapters.SMTP,
-  relay: "johnson.uberspace.de",
-  username: System.get_env("MAIL_USER"),
-  password: System.get_env("MAIL_PASSWORD"),
-  ssl: true,
-  port: 465,
-  tls: :always
+  adapter: Swoosh.Adapters.Sendmail,
+  cmd_path: "/usr/sbin/sendmail",
+  cmd_args: "-N delay,failure,success",
+  qmail: true
 
 config :fast_api, FastApi.Repo, priv: "priv/fast"
 
