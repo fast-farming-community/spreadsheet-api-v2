@@ -21,11 +21,21 @@ config :fast_api, FastApiWeb.Endpoint,
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
-
-config :fast_api, ecto_repos: [FastApi.Repo]
+config :fast_api, FastApi.Mailer,
+  adapter: Swoosh.Adapters.SMTP,
+  relay: "johnson.uberspace.de",
+  username: System.get_env("MAIL_USER"),
+  password: System.get_env("MAIL_PASSWORD"),
+  ssl: true,
+  port: 465,
+  tls: :always
 
 config :fast_api, FastApi.Repo, priv: "priv/fast"
+
+config :fast_api,
+  ecto_repos: [FastApi.Repo],
+  access_token_ttl: {1, :hours},
+  refresh_token_ttl: {4, :weeks}
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false
