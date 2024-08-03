@@ -14,6 +14,7 @@ defmodule FastApi.Repo.Migrations.CreateUsers do
       add :email, :string
       add :password, :string
       add :token, :string
+      add :verified, :boolean
       add :role_id, references(:roles, type: :string, column: :name)
 
       timestamps()
