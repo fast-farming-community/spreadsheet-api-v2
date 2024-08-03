@@ -12,11 +12,21 @@ defmodule FastApi.Auth do
 
   def init_user(params), do: %User{} |> User.changeset(params, :init) |> Repo.insert()
 
-  def create_user(%{"email" => email, "token" => token} = params) do
-    User
-    |> Repo.get_by(email: email, token: token)
-    |> User.changeset(params, :create)
-    |> Repo.update()
+  def create_user(%{"email" => email, "token" => token} = params) when token != "" do
+    case Repo.get_by(User, email: email, token: token, verified: false) do
+      nil ->
+        {:error, :invalid_token}
+
+      user ->
+        user
+        |> User.changeset(params, :create)
+        |> Repo.update()
+    end
+  end
+
+  # TODO: Better error handling?
+  def create_user(_) do
+    {:error, :invalid_token}
   end
 
   def change_password(%User{} = user, params) do

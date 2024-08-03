@@ -45,7 +45,10 @@ defmodule FastApiWeb.UserController do
       {:ok, %User{} = user} ->
         login_success(conn, user)
 
-      {:error, changeset} ->
+      {:error, :invalid_token} ->
+        json(conn, %{errors: ["Registration token is no longer valid."]})
+
+      {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> Plug.Conn.put_status(400)
         |> json(%{errors: EctoUtils.get_errors(changeset)})

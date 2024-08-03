@@ -8,8 +8,6 @@ defmodule FastApi.Schemas.Auth do
 
     @primary_key {:name, :string, []}
     schema "roles" do
-      has_many :users, FastApi.Schemas.Auth.User
-
       timestamps()
     end
   end
@@ -53,7 +51,7 @@ defmodule FastApi.Schemas.Auth do
       user
       |> cast(params, [:password, :password_confirmation])
       |> delete_change(:email)
-      |> validate_required([:email, :old_password, :password])
+      |> validate_required([:email, :password])
       |> validate_email()
       |> validate_password()
       |> put_hash()
