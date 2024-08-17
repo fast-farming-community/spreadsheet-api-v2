@@ -202,15 +202,16 @@ defmodule FastApi.Schemas.Fast do
     use Ecto.Schema
     import Ecto.Changeset
 
-    @derive {Jason.Encoder, only: [:description, :name, :order, :rows]}
+    @derive {Jason.Encoder, only: [:description, :name, :order, :rows, :restrictions]}
     schema "tables" do
-      field(:description, :string)
-      field(:name, :string)
-      field(:order, :integer)
+      field :description, :string
+      field :name, :string
+      field :order, :integer
       belongs_to(:page, FastApi.Schemas.Fast.Page)
-      field(:published, :boolean)
-      field(:range, :string)
-      field(:rows, :string)
+      field :published, :boolean
+      field :range, :string
+      field :rows, :string
+      field :restrictions, :integer, virtual: true
 
       timestamps()
     end
