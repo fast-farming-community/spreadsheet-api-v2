@@ -6,9 +6,11 @@ defmodule FastApi.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      {Goth, name: FastApi.Goth, source: {
-          :default,
-          scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+      {Goth,
+       name: FastApi.Goth,
+       source: {
+         :default,
+         scopes: ["https://www.googleapis.com/auth/spreadsheets"]
        }},
       {Finch, name: FastApi.Finch},
       FastApi.Repo,

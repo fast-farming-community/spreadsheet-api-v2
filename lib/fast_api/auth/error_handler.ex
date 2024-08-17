@@ -5,7 +5,6 @@ defmodule FastApi.Auth.ErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {type, reason}, _opts) do
-    IO.inspect(reason)
     conn
     |> Plug.Conn.put_status(:unauthorized)
     |> json(%{error: to_string(type)})
