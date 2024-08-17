@@ -28,8 +28,11 @@ defmodule FastApiWeb.FeatureController do
 
     {restricted, available} = Enum.split_with(rows, &Restrictions.is_restricted(&1, claims))
 
+    restricted_freqs =
+      Enum.frequencies_by(restricted, fn %{"Requires" => requires} -> requires end)
+
     table
     |> Map.put(:rows, available)
-    |> Map.put(:restrictions, Enum.count(restricted))
+    |> Map.put(:restrictions, restricted_freqs)
   end
 end

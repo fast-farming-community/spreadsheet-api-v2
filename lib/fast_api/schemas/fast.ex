@@ -211,7 +211,7 @@ defmodule FastApi.Schemas.Fast do
       field :published, :boolean
       field :range, :string
       field :rows, :string
-      field :restrictions, :integer, virtual: true
+      field :restrictions, :map, virtual: true
 
       timestamps()
     end

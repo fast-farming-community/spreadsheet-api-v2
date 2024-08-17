@@ -1,7 +1,7 @@
 defmodule FastApi.Auth.Restrictions do
   @restrictions %{
-    "soldier" => ["Path of Fire"],
-    "legionnaire" => [],
+    "soldier" => ["End of Dragons", "Secrets of the Obscure", "Janthir Wilds"],
+    "legionnaire" => ["Janthir Wilds"],
     "tribune" => [],
     "khan-ur" => []
   }
