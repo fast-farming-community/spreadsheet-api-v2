@@ -42,7 +42,7 @@ defmodule FastApi.Auth do
   def delete_unverified() do
     Repo.delete_all(
       from u in User,
-        where: u.verified == false and u.inserted_at > ago(2, "hour")
+        where: u.verified == false and u.inserted_at < ago(2, "hour")
     )
   end
 end

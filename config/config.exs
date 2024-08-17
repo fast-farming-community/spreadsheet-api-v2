@@ -23,8 +23,7 @@ config :fast_api, FastApiWeb.Endpoint,
 # at the `config/runtime.exs`.
 config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,
-  cmd_path: "/usr/sbin/sendmail",
-  qmail: true
+  cmd_path: "/usr/sbin/sendmail"
 
 config :fast_api, FastApi.Repo, priv: "priv/fast"
 
@@ -32,9 +31,6 @@ config :fast_api,
   ecto_repos: [FastApi.Repo],
   access_token_ttl: {1, :hours},
   refresh_token_ttl: {4, :weeks}
-
-# Swoosh API client is needed for adapters other than SMTP.
-config :swoosh, :api_client, false
 
 # Configures Elixir's Logger
 config :logger, :console,

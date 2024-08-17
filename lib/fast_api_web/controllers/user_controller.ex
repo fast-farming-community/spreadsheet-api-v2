@@ -27,9 +27,10 @@ defmodule FastApiWeb.UserController do
   def pre_register(conn, user_params) do
     case Auth.init_user(user_params) do
       {:ok, %User{} = user} ->
-        user
-        |> FastApiWeb.Notifiers.PreRegistrationNotifier.pre_register()
-        |> FastApi.Mailer.deliver()
+        {:ok, _} =
+          user
+          |> FastApiWeb.Notifiers.PreRegistrationNotifier.pre_register()
+          |> FastApi.Mailer.deliver()
 
         json(conn, %{success: :ok})
 
