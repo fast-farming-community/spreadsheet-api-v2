@@ -41,7 +41,6 @@ defmodule FastApiWeb.Router do
     get "/metadata/indexes", MetaController, :index
 
     get "/details/:module/:collection/:item", DetailController, :get_item_page
-
     get "/:module/:collection", FeatureController, :get_page
   end
 

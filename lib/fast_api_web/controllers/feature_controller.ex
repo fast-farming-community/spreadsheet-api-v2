@@ -1,6 +1,7 @@
 defmodule FastApiWeb.FeatureController do
   use FastApiWeb, :controller
 
+  alias FastApi.Auth.Restrictions
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
 
@@ -21,15 +22,11 @@ defmodule FastApiWeb.FeatureController do
   end
 
   defp build_table(%Fast.Table{rows: json_rows} = table, conn) do
-    %{"role" => role} = Guardian.Plug.current_claims(conn) || %{"role" => "soldier"}
+    claims = Guardian.Plug.current_claims(conn)
 
     rows = Jason.decode!(json_rows)
 
-    {restricted, available} =
-      Enum.split_with(rows, fn
-        %{"Requires" => requires} when role == "soldier" -> requires == "Heart of Thorns"
-        _ -> true
-      end)
+    {restricted, available} = Enum.split_with(rows, &Restrictions.is_restricted(&1, claims))
 
     table
     |> Map.put(:rows, available)
