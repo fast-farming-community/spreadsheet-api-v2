@@ -30,6 +30,6 @@ defmodule FastApiWeb.FeatureController do
 
     table
     |> Map.put(:rows, available)
-    |> Map.put(:restricted_count, Enum.count(restricted))
+    |> Map.put(:restrictions, Enum.count(restricted))
   end
 end

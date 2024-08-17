@@ -90,9 +90,10 @@ defmodule FastApiWeb.Controllers.UserControllerTest do
     test "Sunny day" do
       {:ok, %{refresh: refresh}} = create_user()
 
-      assert {:ok, tokens} = HttpClient.post("auth/refresh", %{token: refresh})
+      assert {:ok, %{access: access}} = HttpClient.post("auth/refresh", %{token: refresh})
 
-      verify_tokens(tokens)
+      assert {:ok, %{"typ" => "access"}} =
+               FastApi.Auth.Token.decode_and_verify(access, %{"role" => "soldier"})
     end
 
     test "Expired refresh token" do

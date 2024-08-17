@@ -69,12 +69,11 @@ defmodule FastApiWeb.UserController do
   end
 
   def refresh(conn, %{"token" => refresh}) do
-    case Token.exchange(refresh, "refresh", "access",
-           ttl: Application.fetch_env!(:fast_api, :access_token_ttl)
-         ) do
-      {:ok, {refresh, _}, {access, _}} ->
-        json(conn, %{access: access, refresh: refresh})
-
+    with {:ok, user, _} <-
+           Token.resource_from_token(refresh, %{"iss" => "fast_api", "typ" => "refresh"}),
+         {:ok, access, _} <- Auth.Token.access_token(user) do
+      json(conn, %{access: access})
+    else
       _ ->
         conn
         |> Plug.Conn.put_status(:unauthorized)
