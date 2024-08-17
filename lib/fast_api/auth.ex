@@ -4,6 +4,8 @@ defmodule FastApi.Auth do
 
   import Ecto.Query
 
+  def all_users(), do: Repo.all(from u in User, where: u.verified == true)
+
   def get_user!(id), do: Repo.get!(User, id)
   def get_user_by_email(email), do: Repo.get_by(User, email: email)
 

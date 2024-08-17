@@ -3,7 +3,8 @@ defmodule FastApi.Auth.Restrictions do
     "soldier" => ["End of Dragons", "Secrets of the Obscure", "Janthir Wilds"],
     "legionnaire" => ["Janthir Wilds"],
     "tribune" => [],
-    "khan-ur" => []
+    "khan-ur" => [],
+    "champion" => []
   }
 
   def is_restricted(%{"Requires" => requires}, %{"role" => role}) do
