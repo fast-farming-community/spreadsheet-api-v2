@@ -69,7 +69,7 @@ if config_env() == :prod do
 
   config :fast_api,
     patreon_api_key: System.get_env("PATREON_API_KEY"),
-    patreon_campaign: System.get_env("PATREON_CAMPGAIN")
+    patreon_campaign: System.get_env("PATREON_CAMPAIGN")
 
   config :fast_api, FastApi.Scheduler,
     jobs: [
