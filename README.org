@@ -1,0 +1,7 @@
+* FastApi
+
+** Setup
+
+Ensure that the following environment variables have been defined:
+
+- `GOOGLE_APPLICATION_CREDENTIALS`: `$HOME/.config/gcloud/configurations/config_default`

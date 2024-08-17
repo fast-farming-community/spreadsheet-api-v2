@@ -4,5 +4,5 @@ defmodule FastApi.Auth.Pipeline do
     error_handler: FastApi.Auth.ErrorHandler,
     module: FastApi.Auth.Token
 
-  plug Guardian.Plug.VerifyHeader, claims: %{"typ" => "access"}
+  plug Guardian.Plug.VerifyHeader, claims: %{"iss" => "fast_api", "typ" => "access"}
 end

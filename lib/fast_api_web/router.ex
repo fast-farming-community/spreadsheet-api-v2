@@ -25,6 +25,7 @@ defmodule FastApiWeb.Router do
     post "/refresh", UserController, :refresh
     post "/register", UserController, :register
 
+    pipe_through :secured
     post "/change-password", UserController, :change_password
   end
 

@@ -2,6 +2,8 @@ defmodule FastApi.Auth do
   alias FastApi.Repo
   alias FastApi.Schemas.Auth.{Role, User}
 
+  import Ecto.Query
+
   def get_user!(id), do: Repo.get!(User, id)
   def get_user_by_email(email), do: Repo.get_by(User, email: email)
 
@@ -31,5 +33,16 @@ defmodule FastApi.Auth do
 
   def change_password(%User{} = user, params) do
     user |> User.changeset(params, :update) |> Repo.update()
+  end
+
+  def set_role(%User{} = user, role) do
+    user |> Repo.preload(:role) |> User.changeset(role, :role) |> Repo.update()
+  end
+
+  def delete_unverified() do
+    Repo.delete_all(
+      from u in User,
+        where: u.verified == false and u.inserted_at > ago(2, "hour")
+    )
   end
 end

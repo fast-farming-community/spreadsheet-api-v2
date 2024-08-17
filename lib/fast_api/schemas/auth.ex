@@ -57,6 +57,12 @@ defmodule FastApi.Schemas.Auth do
       |> put_hash()
     end
 
+    def changeset(user, role, :role) do
+      user
+      |> cast(%{}, [])
+      |> put_change(:role_id, role)
+    end
+
     defp validate_email(%Ecto.Changeset{} = changeset) do
       changeset
       |> validate_format(:email, ~r/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/,

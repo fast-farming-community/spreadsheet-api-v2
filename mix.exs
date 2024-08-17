@@ -42,6 +42,7 @@ defmodule FastApi.MixProject do
       {:goth, "~> 1.3.0"},
       {:guardian, "~> 2.0"},
       {:jason, "~> 1.2"},
+      {:mock, "~> 0.3.0", only: :test},
       {:phoenix, "~> 1.6.2"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_html, "~> 3.0"},

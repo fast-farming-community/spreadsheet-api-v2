@@ -67,12 +67,17 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
 
+  config :fast_api,
+    patreon_api_key: System.get_env("PATREON_API_KEY"),
+    patreon_campaign: System.get_env("PATREON_CAMPGAIN")
+
   config :fast_api, FastApi.Scheduler,
     jobs: [
       # {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
       {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
+      {"@hourly", {FastApi.Auth, :delete_unverified, []}},
       {"@daily", {FastApi.Sync.Indexer, :execute, []}}
     ]
 

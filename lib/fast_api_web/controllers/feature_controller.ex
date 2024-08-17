@@ -14,9 +14,25 @@ defmodule FastApiWeb.FeatureController do
     |> Repo.preload(:tables)
     |> then(fn page ->
       page.tables
-      |> Enum.map(&%Fast.Table{&1 | rows: Jason.decode!(&1.rows)})
+      |> Enum.map(&build_table(&1, conn))
       |> Enum.sort_by(& &1.order)
     end)
     |> then(&json(conn, &1))
+  end
+
+  defp build_table(%Fast.Table{rows: json_rows} = table, conn) do
+    %{"role" => role} = Guardian.Plug.current_claims(conn) || %{"role" => "soldier"}
+
+    rows = Jason.decode!(json_rows)
+
+    {restricted, available} =
+      Enum.split_with(rows, fn
+        %{"Requires" => requires} when role == "soldier" -> requires == "Heart of Thorns"
+        _ -> true
+      end)
+
+    table
+    |> Map.put(:rows, available)
+    |> Map.put(:restricted_count, Enum.count(restricted))
   end
 end

@@ -24,7 +24,6 @@ config :fast_api, FastApiWeb.Endpoint,
 config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,
   cmd_path: "/usr/sbin/sendmail",
-  cmd_args: "-N delay,failure,success",
   qmail: true
 
 config :fast_api, FastApi.Repo, priv: "priv/fast"
