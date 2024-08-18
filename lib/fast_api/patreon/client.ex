@@ -1,4 +1,5 @@
 defmodule FastApi.Patreon.Client do
+  @moduledoc "Patreon API Client."
   require Logger
 
   @tiers %{

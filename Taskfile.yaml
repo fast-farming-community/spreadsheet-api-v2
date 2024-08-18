@@ -15,6 +15,13 @@ tasks:
     env:
       MIX_ENV: prod
 
+  lint:
+    cmds:
+      - mix dialyzer
+      - mix credo
+    env:
+      MIX_ENV: test
+
   run-dev:
     cmds:
       - mix phx.server

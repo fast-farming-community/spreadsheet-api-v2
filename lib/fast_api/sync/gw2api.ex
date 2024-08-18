@@ -1,4 +1,5 @@
 defmodule FastApi.Sync.GW2API do
+  @moduledoc "Synchronize the spreadsheet using GW2 API data."
   import Ecto.Query, only: [from: 2]
 
   alias FastApi.Repo

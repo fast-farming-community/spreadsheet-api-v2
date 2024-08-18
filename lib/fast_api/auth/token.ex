@@ -1,4 +1,5 @@
 defmodule FastApi.Auth.Token do
+  @moduledoc "Implementation of ueberauth/guardian."
   use Guardian, otp_app: :fast_api
 
   alias FastApi.Auth

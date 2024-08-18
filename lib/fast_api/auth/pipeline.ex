@@ -1,4 +1,5 @@
 defmodule FastApi.Auth.Pipeline do
+  @moduledoc "Authentication pipeline."
   use Guardian.Plug.Pipeline,
     otp_app: :fast_api,
     error_handler: FastApi.Auth.ErrorHandler,

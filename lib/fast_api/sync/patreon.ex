@@ -1,4 +1,5 @@
 defmodule FastApi.Sync.Patreon do
+  @moduledoc "Synchronize database with Patreon data."
   alias FastApi.Auth
   alias FastApi.Patreon.Client
 

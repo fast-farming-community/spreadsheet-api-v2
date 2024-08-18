@@ -1,4 +1,6 @@
 defmodule FastApi.Sync.Features do
+  @moduledoc "Synchronize the database using spreadsheet data."
+
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
   alias GoogleApi.Sheets.V4.Model.ValueRange
@@ -28,7 +30,6 @@ defmodule FastApi.Sync.Features do
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end
 
-  @spec get_spreadsheet_tables([Fast.Table.t()], non_neg_integer()) :: [{Fast.Table.t(), map()}]
   defp get_spreadsheet_tables({tables, idx}, total) do
     {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)

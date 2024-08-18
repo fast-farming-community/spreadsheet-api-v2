@@ -1,4 +1,5 @@
 defmodule FastApi.Sync.Indexer do
+  @moduledoc "Create API index."
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
 

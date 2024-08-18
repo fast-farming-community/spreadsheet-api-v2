@@ -11,7 +11,7 @@ defmodule FastApiWeb.DetailController do
     claims = Guardian.Plug.current_claims(conn)
     %{"Category" => category} = detail = get_detail(module, collection, item)
 
-    if Restrictions.is_restricted(detail, claims) do
+    if Restrictions.restricted?(detail, claims) do
       # TODO: better
       conn
       |> Plug.Conn.put_status(:unauthorized)

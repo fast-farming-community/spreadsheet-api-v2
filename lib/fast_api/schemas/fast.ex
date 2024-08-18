@@ -1,9 +1,8 @@
 defmodule FastApi.Schemas.Fast do
-  @moduledoc """
-  Schemas for static content and spreadsheet data
-  """
+  @moduledoc "Schemas for static content and spreadsheet data."
 
   defmodule About do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:content, :published, :title]}
@@ -18,6 +17,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Build do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder,
@@ -64,6 +64,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Contributor do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :type]}
@@ -77,6 +78,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule DetailFeature do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :detail_tables]}
@@ -90,6 +92,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule DetailTable do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
@@ -113,6 +116,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Feature do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :pages]}
@@ -126,6 +130,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Guide do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:farmtrain, :image, :info, :published, :title]}
@@ -142,6 +147,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Item do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
@@ -170,6 +176,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Metadata do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
@@ -185,6 +192,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Page do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :tables]}
@@ -199,6 +207,7 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Table do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 

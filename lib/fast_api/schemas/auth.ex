@@ -1,9 +1,8 @@
 defmodule FastApi.Schemas.Auth do
-  @moduledoc """
-  Schemas for user authentication and authorization
-  """
+  @moduledoc "Schemas for user authentication and authorization."
 
   defmodule Role do
+    @moduledoc false
     use Ecto.Schema
 
     @primary_key {:name, :string, []}
@@ -13,6 +12,7 @@ defmodule FastApi.Schemas.Auth do
   end
 
   defmodule User do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
     import Bcrypt

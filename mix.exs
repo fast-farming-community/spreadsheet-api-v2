@@ -35,6 +35,8 @@ defmodule FastApi.MixProject do
     [
       {:bcrypt_elixir, "~> 3.0"},
       {:cors_plug, "~> 2.0"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ecto_sql, "~> 3.6"},
       {:gen_smtp, "~> 1.1"},
       {:gettext, "~> 0.18"},

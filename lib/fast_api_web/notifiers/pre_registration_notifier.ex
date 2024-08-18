@@ -1,4 +1,5 @@
 defmodule FastApiWeb.Notifiers.PreRegistrationNotifier do
+  @moduledoc "Email template for user pre-registration."
   use Phoenix.Swoosh,
     template_root: "lib/fast_api_web/templates",
     template_path: "email"

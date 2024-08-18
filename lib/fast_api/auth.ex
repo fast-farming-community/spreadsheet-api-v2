@@ -1,4 +1,5 @@
 defmodule FastApi.Auth do
+  @moduledoc "Authentication helper functions."
   alias FastApi.Repo
   alias FastApi.Schemas.Auth.{Role, User}
 

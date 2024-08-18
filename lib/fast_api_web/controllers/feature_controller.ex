@@ -26,7 +26,7 @@ defmodule FastApiWeb.FeatureController do
 
     rows = Jason.decode!(json_rows)
 
-    {restricted, available} = Enum.split_with(rows, &Restrictions.is_restricted(&1, claims))
+    {restricted, available} = Enum.split_with(rows, &Restrictions.restricted?(&1, claims))
 
     restricted_freqs =
       Enum.frequencies_by(restricted, fn %{"Requires" => requires} -> requires end)
