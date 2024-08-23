@@ -30,7 +30,8 @@ config :fast_api, FastApi.Repo, priv: "priv/fast"
 config :fast_api,
   ecto_repos: [FastApi.Repo],
   access_token_ttl: {1, :hours},
-  refresh_token_ttl: {4, :weeks}
+  refresh_token_ttl: {4, :weeks},
+  throttle_request_limit: 100
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false

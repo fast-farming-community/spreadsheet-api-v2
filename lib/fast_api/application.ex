@@ -12,6 +12,7 @@ defmodule FastApi.Application do
          :default,
          scopes: ["https://www.googleapis.com/auth/spreadsheets"]
        }},
+      {PlugAttack.Storage.Ets, name: FastApi.PlugAttack.Storage, clean_period: 60_000},
       {Finch, name: FastApi.Finch},
       FastApi.Repo,
       FastApi.Scheduler,

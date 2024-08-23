@@ -12,4 +12,7 @@ config :cors_plug,
   ],
   methods: ["GET"]
 
+config :fast_api,
+  throttle_request_limit: 10
+
 config :logger, level: :info

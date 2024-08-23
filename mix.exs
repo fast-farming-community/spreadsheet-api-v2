@@ -50,6 +50,7 @@ defmodule FastApi.MixProject do
       {:phoenix_html, "~> 3.0"},
       {:phoenix_live_view, "~> 0.17.5"},
       {:phoenix_swoosh, "~> 1.0"},
+      {:plug_attack, "~> 0.4.2"},
       {:plug_cowboy, "~> 2.5"},
       {:postgrex, ">= 0.0.0"},
       {:quantum, "~> 3.0"},
