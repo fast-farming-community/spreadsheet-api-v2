@@ -34,7 +34,7 @@ if config_env() == :prod do
       """
 
   host = System.get_env("PHX_HOST") || "example.com"
-  port = String.to_integer(System.get_env("PORT_TEST") || "4000")
+  port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :fast_api, FastApiWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
@@ -53,7 +53,7 @@ if config_env() == :prod do
     secret_key: secret_key_base
 
   database_url =
-    System.get_env("DATABASE_URL_TEST") ||
+    System.get_env("DATABASE_URL") ||
       raise """
       environment variable DATABASE_URL is missing.
       For example: ecto://USER:PASS@HOST/DATABASE
@@ -73,7 +73,7 @@ if config_env() == :prod do
 
   config :fast_api, FastApi.Scheduler,
     jobs: [
-      # {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
+      {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
       {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
