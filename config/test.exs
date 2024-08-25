@@ -13,23 +13,24 @@ config :fast_api, FastApi.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 10
 
+secret_key = "ih4cDxQd4vOY/WlfymlhKUhT/QTCdBYMtxjm50Oc5uUPyApy5ql7XJHXV+9pmfq/"
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :fast_api, FastApiWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "ih4cDxQd4vOY/WlfymlhKUhT/QTCdBYMtxjm50Oc5uUPyApy5ql7XJHXV+9pmfq/",
-  server: false
+  http: [ip: {127, 0, 0, 1}, port: 4000],
+  secret_key_base: secret_key,
+  server: true
 
-config :fast_api,
-  mongo_host: "localhost:27017",
-  mongo_uname: "mongo",
-  mongo_password: "mongo"
+config :fast_api, FastApi.Auth.Token,
+  issuer: "fast_api",
+  secret_key: secret_key
 
 # In test we don't send emails.
 config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Test
 
 # Print only warnings and errors during test
-config :logger, level: :warn
+config :logger, level: :warning
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime

@@ -48,6 +48,10 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  config :fast_api, FastApi.Auth.Token,
+    issuer: "fast_api",
+    secret_key: secret_key_base
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """
@@ -57,18 +61,25 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6"), do: [:inet6], else: []
 
-  config :fast_api, FastApi.Repos.Fast,
+  config :fast_api, FastApi.Repo,
     # ssl: true,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
 
+  config :fast_api,
+    patreon_api_key: System.get_env("PATREON_API_KEY"),
+    patreon_campaign: System.get_env("PATREON_CAMPAIGN")
+
   config :fast_api, FastApi.Scheduler,
     jobs: [
-      # {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
+      {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-      {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.DetailTable]}},
-      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Repos.Fast.Table]}},
+      {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
+      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
+      {"@hourly", {FastApi.Auth, :delete_unverified, []}},
+      {"@hourly", {FastApi.Sync.Patreon, :sync_memberships, []}},
+      {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
       {"@daily", {FastApi.Sync.Indexer, :execute, []}}
     ]
 

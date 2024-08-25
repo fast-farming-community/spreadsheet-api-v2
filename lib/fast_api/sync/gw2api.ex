@@ -1,8 +1,9 @@
 defmodule FastApi.Sync.GW2API do
+  @moduledoc "Synchronize the spreadsheet using GW2 API data."
   import Ecto.Query, only: [from: 2]
 
-  alias FastApi.Repos.Fast, as: Repo
-  alias Finch
+  alias FastApi.Repo
+  alias FastApi.Schemas.Fast
 
   require Logger
 
@@ -28,7 +29,7 @@ defmodule FastApi.Sync.GW2API do
         end)
       end)
 
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
+    {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
     {:ok, _response} =
@@ -66,19 +67,19 @@ defmodule FastApi.Sync.GW2API do
 
   @spec sync_prices() :: :ok
   def sync_prices do
-    from(item in Repo.Item,
+    from(item in Fast.Item,
       where: item.tradable == true,
       select: item
     )
     |> Repo.all()
     |> get_item_details()
     |> Enum.each(fn
-      {%Repo.Item{id: id, vendor_value: vendor_value} = item,
+      {%Fast.Item{id: id, vendor_value: vendor_value} = item,
        %{id: id, buys: %{"unit_price" => buy} = buys} = changes} ->
         buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
 
         item
-        |> Repo.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
+        |> Fast.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
         |> Repo.update()
 
       {item, changes} ->
@@ -112,14 +113,14 @@ defmodule FastApi.Sync.GW2API do
     sync_prices()
 
     items =
-      Repo.Item
+      Fast.Item
       |> Repo.all()
-      |> Enum.map(fn %Repo.Item{} = item ->
+      |> Enum.map(fn %Fast.Item{} = item ->
         [item.id, item.name, item.buy, item.sell, item.icon, item.rarity, item.vendor_value]
       end)
       |> Enum.sort_by(&List.first/1)
 
-    {:ok, token} = Goth.Token.for_scope("https://www.googleapis.com/auth/spreadsheets")
+    {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
 
     {:ok, _response} =
@@ -190,6 +191,6 @@ defmodule FastApi.Sync.GW2API do
   defp to_item(params, tradable \\ false) do
     params
     |> Map.put(:tradable, tradable)
-    |> then(&struct(Repo.Item, &1))
+    |> then(&struct(Fast.Item, &1))
   end
 end

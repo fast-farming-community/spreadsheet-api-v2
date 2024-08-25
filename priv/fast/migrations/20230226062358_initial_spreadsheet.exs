@@ -1,4 +1,4 @@
-defmodule FastApi.Repos.Fast.Migrations.InitialSpreadsheet do
+defmodule FastApi.Repo.Migrations.InitialSpreadsheet do
   use Ecto.Migration
 
   def change do

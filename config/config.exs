@@ -7,19 +7,12 @@
 # General application configuration
 import Config
 
-config :fast_api,
-  ecto_repos: [FastApi.Repo]
-
 # Configures the endpoint
 config :fast_api, FastApiWeb.Endpoint,
   url: [host: "localhost"],
   render_errors: [view: FastApiWeb.ErrorView, accepts: ~w(html json), layout: false],
   pubsub_server: FastApi.PubSub,
   live_view: [signing_salt: "N7gdh9BX"]
-
-config :fast_api,
-  cockpit_token: System.get_env("COCKPIT_TOKEN"),
-  cockpit_url: "https://fast.farming-community.eu/cockpit/api/collection/get/"
 
 # Configures the mailer
 #
@@ -28,12 +21,17 @@ config :fast_api,
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :fast_api, FastApi.Mailer, adapter: Swoosh.Adapters.Local
+config :fast_api, FastApi.Mailer,
+  adapter: Swoosh.Adapters.Sendmail,
+  cmd_path: "/usr/sbin/sendmail"
+
+config :fast_api, FastApi.Repo, priv: "priv/fast"
 
 config :fast_api,
-  ecto_repos: [FastApi.Repos.Fast]
-
-config :fast_api, FastApi.Repos.Fast, priv: "priv/fast"
+  ecto_repos: [FastApi.Repo],
+  access_token_ttl: {1, :hours},
+  refresh_token_ttl: {4, :weeks},
+  throttle_request_limit: 100
 
 # Swoosh API client is needed for adapters other than SMTP.
 config :swoosh, :api_client, false

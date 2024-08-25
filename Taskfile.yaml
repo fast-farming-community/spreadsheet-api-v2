@@ -1,0 +1,39 @@
+version: '3'
+
+tasks:
+  deps:
+    cmds:
+      - mix deps.get
+
+  deps-update:
+    cmds:
+      - mix deps.update --all
+
+  build-prod:
+    cmds:
+      - mix release
+    env:
+      MIX_ENV: prod
+
+  lint:
+    cmds:
+      - mix dialyzer
+      - mix credo
+    env:
+      MIX_ENV: test
+
+  run-dev:
+    cmds:
+      - mix phx.server
+    env:
+      MIX_ENV: test
+
+  run-prod:
+    cmds:
+      - ps -ea -o pid,command | grep [e]lixir | awk '{print $1}' | xargs kill -9
+      - _build/prod/rel/fast_api/bin/fast_api daemon
+
+  test-local-env:
+    cmds:
+      - podman-compose -f $(pwd)/docker/docker-compose.yaml down --remove-orphans
+      - podman-compose -f $(pwd)/docker/docker-compose.yaml up -d

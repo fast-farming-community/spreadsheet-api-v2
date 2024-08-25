@@ -1,4 +1,4 @@
-defmodule FastApi.Repos.Fast.Migrations.Initial do
+defmodule FastApi.Repo.Migrations.Initial do
   use Ecto.Migration
 
   def change do

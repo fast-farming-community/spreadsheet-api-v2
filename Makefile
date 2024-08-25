@@ -26,17 +26,17 @@ run-prod: build-prod
 
 .PHONY: test-local-up
 test-local-up:
-	docker-compose -f docker/docker-compose.yaml up -d
+	podman-compose -f docker/docker-compose.yaml up -d
 
 .PHONY: test-local-down
 test-local-down:
-	docker-compose -f docker/docker-compose.yaml down --remove-orphans
+	podman-compose -f docker/docker-compose.yaml down --remove-orphans
 
 .PHONY: test-local-env
 test-local-env: test-local-down test-local-up
 
 .PHONY: test-local-logs
 test-local-logs:
-	docker-compose -f docker/docker-compose.yaml logs ${ARG}
+	podman-compose -f docker/docker-compose.yaml logs ${ARG}
 
 # end

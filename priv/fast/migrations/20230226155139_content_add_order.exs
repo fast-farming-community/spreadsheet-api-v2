@@ -1,4 +1,4 @@
-defmodule FastApi.Repos.Fast.Migrations.ContentAddOrder do
+defmodule FastApi.Repo.Migrations.ContentAddOrder do
   use Ecto.Migration
 
   def change do

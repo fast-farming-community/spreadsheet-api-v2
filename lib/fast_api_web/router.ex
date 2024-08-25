@@ -13,8 +13,28 @@ defmodule FastApiWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :throttle do
+    plug FastApi.PlugAttack
+  end
+
+  pipeline :secured do
+    plug FastApi.Auth.Pipeline
+  end
+
+  scope "/api/v1/auth", FastApiWeb do
+    pipe_through [:api, :throttle]
+
+    post "/login", UserController, :login
+    post "/pre-register", UserController, :pre_register
+    post "/refresh", UserController, :refresh
+    post "/register", UserController, :register
+
+    pipe_through :secured
+    post "/change-password", UserController, :change_password
+  end
+
   scope "/api/v1", FastApiWeb do
-    pipe_through :api
+    pipe_through :secured
 
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds
@@ -25,7 +45,6 @@ defmodule FastApiWeb.Router do
     get "/metadata/indexes", MetaController, :index
 
     get "/details/:module/:collection/:item", DetailController, :get_item_page
-
     get "/:module/:collection", FeatureController, :get_page
   end
 

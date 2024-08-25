@@ -1,10 +1,8 @@
-defmodule FastApi.Repos.Fast do
-  use Ecto.Repo, otp_app: :fast_api, adapter: Ecto.Adapters.Postgres
+defmodule FastApi.Schemas.Fast do
+  @moduledoc "Schemas for static content and spreadsheet data."
 
-  #########################################################################################
-  # CONTENT
-  #########################################################################################
   defmodule About do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:content, :published, :title]}
@@ -19,6 +17,7 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Build do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder,
@@ -65,6 +64,7 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Contributor do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :type]}
@@ -78,12 +78,13 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule DetailFeature do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :detail_tables]}
     schema "detail_features" do
       field(:name, :string)
-      has_many(:detail_tables, FastApi.Repos.Fast.DetailTable)
+      has_many(:detail_tables, FastApi.Schemas.Fast.DetailTable)
       field(:published, :boolean)
 
       timestamps()
@@ -91,13 +92,14 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule DetailTable do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
     @derive {Jason.Encoder, only: [:description, :key, :name, :rows]}
     schema "detail_tables" do
       field(:description, :string)
-      belongs_to(:detail_feature, FastApi.Repos.Fast.DetailFeature)
+      belongs_to(:detail_feature, FastApi.Schemas.Fast.DetailFeature)
       field(:key, :string)
       field(:name, :string)
       field(:range, :string)
@@ -114,12 +116,13 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Feature do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :pages]}
     schema "features" do
       field(:name, :string)
-      has_many(:pages, FastApi.Repos.Fast.Page)
+      has_many(:pages, FastApi.Schemas.Fast.Page)
       field(:published, :boolean)
 
       timestamps()
@@ -127,6 +130,7 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Guide do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:farmtrain, :image, :info, :published, :title]}
@@ -143,6 +147,7 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Item do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
@@ -171,6 +176,7 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Metadata do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
@@ -186,32 +192,35 @@ defmodule FastApi.Repos.Fast do
   end
 
   defmodule Page do
+    @moduledoc false
     use Ecto.Schema
 
     @derive {Jason.Encoder, only: [:name, :tables]}
     schema "pages" do
-      belongs_to(:feature, FastApi.Repos.Fast.Feature)
+      belongs_to(:feature, FastApi.Schemas.Fast.Feature)
       field(:name, :string)
       field(:published, :boolean)
-      has_many(:tables, FastApi.Repos.Fast.Table)
+      has_many(:tables, FastApi.Schemas.Fast.Table)
 
       timestamps()
     end
   end
 
   defmodule Table do
+    @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
 
-    @derive {Jason.Encoder, only: [:description, :name, :order, :rows]}
+    @derive {Jason.Encoder, only: [:description, :name, :order, :rows, :restrictions]}
     schema "tables" do
-      field(:description, :string)
-      field(:name, :string)
-      field(:order, :integer)
-      belongs_to(:page, FastApi.Repos.Fast.Page)
-      field(:published, :boolean)
-      field(:range, :string)
-      field(:rows, :string)
+      field :description, :string
+      field :name, :string
+      field :order, :integer
+      belongs_to(:page, FastApi.Schemas.Fast.Page)
+      field :published, :boolean
+      field :range, :string
+      field :rows, :string
+      field :restrictions, :map, virtual: true
 
       timestamps()
     end
