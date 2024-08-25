@@ -4,7 +4,7 @@ defmodule FastApi.Patreon.Client do
 
   @tiers %{
     "5061127" => "legionnaire",
-    "5061143" => "tribunte",
+    "5061143" => "tribune",
     "5061144" => "khan-ur"
   }
 
@@ -34,7 +34,7 @@ defmodule FastApi.Patreon.Client do
 
   defp build_patron(%{
          attributes: %{patron_status: "active_patron"} = patron,
-         relationships: %{currently_entitle_tiers: %{data: [%{id: tier}]}}
+         relationships: %{currently_entitled_tiers: %{data: [%{id: tier}]}}
        }) do
     role = Map.get(@tiers, tier, "soldier")
     [Map.put(patron, :role, role)]
