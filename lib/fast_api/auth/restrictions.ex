@@ -2,8 +2,8 @@ defmodule FastApi.Auth.Restrictions do
   @moduledoc "Applies restrictions to user access based on roles."
 
   @restrictions %{
-    "soldier" => ["End of Dragons", "Secrets of the Obscure", "Janthir Wilds"],
-    "legionnaire" => ["Janthir Wilds"],
+    "soldier" => [],
+    "legionnaire" => [],
     "tribune" => [],
     "khan-ur" => [],
     "champion" => []

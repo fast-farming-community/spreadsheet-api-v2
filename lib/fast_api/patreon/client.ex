@@ -43,7 +43,7 @@ defmodule FastApi.Patreon.Client do
     end)
   end
 
-  defp active_patrons(%{links: %{next: next}}, patrons \\ []) do
+  defp active_patrons(%{links: %{next: next}}, patrons) do
     next
     |> get_patrons()
     |> then(fn
