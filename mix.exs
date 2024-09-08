@@ -56,6 +56,7 @@ defmodule FastApi.MixProject do
       {:quantum, "~> 3.0"},
       {:swoosh, "~> 1.3"},
       {:telemetry_metrics, "~> 0.6"},
+      {:telemetry_metrics_prometheus, "~> 1.1"},
       {:telemetry_poller, "~> 1.0"}
     ]
   end
