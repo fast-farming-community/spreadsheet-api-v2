@@ -8,6 +8,11 @@ defmodule FastApiWeb.DetailController do
   import Ecto.Query
 
   def get_item_page(conn, %{"module" => module, "collection" => collection, "item" => item}) do
+    :telemetry.execute([:fast_api, :feature, :request], %{count: 1}, %{
+      collection: collection,
+      item: item
+    })
+
     claims = Guardian.Plug.current_claims(conn)
     %{"Category" => category} = detail = get_detail(module, collection, item)
 
