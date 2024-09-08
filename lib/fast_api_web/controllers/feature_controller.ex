@@ -10,6 +10,8 @@ defmodule FastApiWeb.FeatureController do
   end
 
   def get_page(conn, %{"collection" => collection}) do
+    :telemetry.execute([:fast_api, :feature, :request], %{count: 1}, %{collection: collection})
+
     Fast.Page
     |> Repo.get_by(name: collection)
     |> Repo.preload(:tables)

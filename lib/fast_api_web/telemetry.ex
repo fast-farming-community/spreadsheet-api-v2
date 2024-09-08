@@ -49,6 +49,9 @@ defmodule FastApiWeb.Telemetry do
         description:
           "The time the connection spent waiting before being checked out for the query"
       ),
+      counter("fast_api.feature.request",
+        descriptoin: "The amount of requests made to feature endpoints"
+      ),
 
       # VM Metrics
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
