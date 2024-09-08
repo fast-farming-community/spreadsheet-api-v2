@@ -38,6 +38,8 @@ defmodule FastApiWeb.Router do
 
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds
+    get "/changelog", ContentController, :changelog
+    get "/content-updates", ContentController, :content_updates
     get "/contributors", ContentController, :contributors
     get "/guides", ContentController, :guides
 

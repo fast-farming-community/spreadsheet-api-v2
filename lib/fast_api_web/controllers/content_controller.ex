@@ -4,6 +4,8 @@ defmodule FastApiWeb.ContentController do
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
 
+  require Logger
+
   def index(conn, _params) do
     data =
       Fast.About
@@ -23,6 +25,16 @@ defmodule FastApiWeb.ContentController do
     json(conn, data)
   end
 
+  def changelog(conn, _params) do
+    data = github_file("CHANGELOG.md")
+    text(conn, data)
+  end
+
+  def content_updates(conn, _params) do
+    data = github_file("WEBSITE_CONTENT_UPDATES.md")
+    text(conn, data)
+  end
+
   def contributors(conn, _params) do
     data =
       Fast.Contributor
@@ -40,5 +52,22 @@ defmodule FastApiWeb.ContentController do
       |> Enum.sort_by(& &1.order, :asc)
 
     json(conn, data)
+  end
+
+  def github_file(filename) do
+    :get
+    |> Finch.build(
+      "https://raw.githubusercontent.com/fast-farming-community/public/main/#{filename}",
+      [{"Content-Type", "text"}]
+    )
+    |> Finch.request(FastApi.Finch)
+    |> then(fn
+      {:ok, %Finch.Response{body: body}} ->
+        body
+
+      {:error, error} ->
+        Logger.error("Error requesting #{filename} from GitHub: #{error}")
+        ""
+    end)
   end
 end
