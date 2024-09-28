@@ -176,7 +176,15 @@ defmodule FastApi.Schemas.Fast do
   end
 
   defmodule Metadata do
-    @moduledoc false
+    @moduledoc """
+    Store JSON blobs (data) containing website metadata
+
+    Default metadata (name):
+      - main: Contains `updated_at` time for feature sync
+      - detail: Contains `updated_at` time for detail sync
+      - index: Contains the table index
+      - public: Contains CHANGELOG, WEBSITE_CONTENT_UPDATES and WEBSITE_TODOS update times
+    """
     use Ecto.Schema
     import Ecto.Changeset
 
