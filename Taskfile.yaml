@@ -33,7 +33,7 @@ tasks:
       - ps -ea -o pid,command | grep [e]lixir | awk '{print $1}' | xargs kill -9
       - _build/prod/rel/fast_api/bin/fast_api daemon
 
-  test-local-env:
+  local-env:
     cmds:
       - podman-compose -f $(pwd)/docker/docker-compose.yaml down --remove-orphans
       - podman-compose -f $(pwd)/docker/docker-compose.yaml up -d

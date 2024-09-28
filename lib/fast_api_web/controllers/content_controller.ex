@@ -35,6 +35,11 @@ defmodule FastApiWeb.ContentController do
     text(conn, data)
   end
 
+  def todos(conn, _params) do
+    data = github_file("WEBSITE_TODOS.md")
+    text(conn, data)
+  end
+
   def contributors(conn, _params) do
     data =
       Fast.Contributor
