@@ -33,3 +33,6 @@ npm-debug.log
 /assets/node_modules/
 
 .env
+
+/priv/repo/seeds.json
+/priv/repo/seeds.yaml
