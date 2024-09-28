@@ -10,7 +10,7 @@ defmodule FastApi.Sync.Public do
     json_data =
       Jason.encode!(%{
         changelog: %{updated_at: github_file_last_update("CHANGELOG.md")},
-        content_update: %{updated_at: github_file_last_update("WEBSITE_CONTENT_UPDATES.md")},
+        content_updates: %{updated_at: github_file_last_update("WEBSITE_CONTENT_UPDATES.md")},
         todos: %{updated_at: github_file_last_update("WEBSITE_TODOS.md")}
       })
 
