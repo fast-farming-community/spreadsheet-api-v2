@@ -1,6 +1,16 @@
 version: '3'
 
 tasks:
+  apply-seeds:
+    cmds:
+      - mix run priv/repo/seeds.exs
+
+  build-prod:
+    cmds:
+      - mix release
+    env:
+      MIX_ENV: prod
+
   deps:
     cmds:
       - mix deps.get
@@ -9,9 +19,9 @@ tasks:
     cmds:
       - mix deps.update --all
 
-  build-prod:
+  gen-seeds:
     cmds:
-      - mix release
+      - mix run priv/repo/gen-seeds.exs
     env:
       MIX_ENV: prod
 
@@ -28,10 +38,18 @@ tasks:
     env:
       MIX_ENV: test
 
-  run-prod:
+  restart-prod:
+    cmds:
+      - task: stop-prod
+      - task: start-prod
+
+  start-prod:
+    cmds:
+      - _build/prod/rel/fast_api/bin/fast_api daemon
+
+  stop-prod:
     cmds:
       - ps -ea -o pid,command | grep [e]lixir | awk '{print $1}' | xargs kill -9
-      - _build/prod/rel/fast_api/bin/fast_api daemon
 
   local-env:
     cmds:
