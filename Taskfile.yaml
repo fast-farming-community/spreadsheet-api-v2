@@ -35,5 +35,5 @@ tasks:
 
   local-env:
     cmds:
-      - podman-compose -f $(pwd)/docker/docker-compose.yaml down --remove-orphans
-      - podman-compose -f $(pwd)/docker/docker-compose.yaml up -d
+      - docker compose -f $(pwd)/docker/docker-compose.yaml down --remove-orphans
+      - docker compose -f $(pwd)/docker/docker-compose.yaml up -d
