@@ -4,6 +4,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fast_api_dev
       PGDATA: /data/postgres
     ports:
       - "5432:5432"
@@ -12,7 +13,9 @@ services:
       - postgres:/data/postgres
   pgadmin:
     image: docker.io/dpage/pgadmin4
+    entrypoint: /bin/sh -c "chmod 600 /pgpass; /entrypoint.sh;"
     restart: always
+    user: root
     ports:
       - "8888:80"
     environment:
@@ -20,6 +23,27 @@ services:
       PGADMIN_DEFAULT_PASSWORD: admin
     volumes:
       - pgadmin:/data/pgadmin
+    configs:
+      - source: servers.json
+        target: /pgadmin4/servers.json
+      - source: pgpass
+        target: /pgpass
+
+configs:
+  pgpass:
+    content: postgres:5432:*:postgres:postgres
+  servers.json:
+    content: |
+      {"Servers": {"1": {
+        "Group": "Servers",
+        "Name": "Fast",
+        "Host": "postgres",
+        "Port": 5432,
+        "MaintenanceDB": "postgres",
+        "Username": "postgres",
+        "PassFile": "/pgpass",
+        "SSLMode": "prefer"
+      }}}
 
 volumes:
   postgres:
