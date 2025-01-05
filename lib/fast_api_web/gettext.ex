@@ -20,5 +20,5 @@ defmodule FastApiWeb.Gettext do
 
   See the [Gettext Docs](https://hexdocs.pm/gettext) for detailed usage.
   """
-  use Gettext, otp_app: :fast_api
+  use Gettext, backend: :fast_api
 end

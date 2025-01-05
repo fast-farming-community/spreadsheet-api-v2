@@ -15,6 +15,10 @@ config :fast_api, FastApi.Repo,
 
 secret_key = "ih4cDxQd4vOY/WlfymlhKUhT/QTCdBYMtxjm50Oc5uUPyApy5ql7XJHXV+9pmfq/"
 
+config :cors_plug,
+  origin: ["http://localhost:4200"],
+  methods: ["GET"]
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :fast_api, FastApiWeb.Endpoint,

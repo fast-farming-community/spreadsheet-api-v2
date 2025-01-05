@@ -28,6 +28,10 @@ config :fast_api, FastApi.Mailer,
 config :fast_api, FastApi.Repo, priv: "priv/fast"
 
 config :fast_api,
+  patreon_api_key: System.get_env("PATREON_API_KEY"),
+  patreon_campaign: System.get_env("PATREON_CAMPAIGN")
+
+config :fast_api,
   ecto_repos: [FastApi.Repo],
   access_token_ttl: {1, :hours},
   refresh_token_ttl: {4, :weeks},

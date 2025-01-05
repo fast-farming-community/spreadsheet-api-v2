@@ -67,10 +67,6 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
 
-  config :fast_api,
-    patreon_api_key: System.get_env("PATREON_API_KEY"),
-    patreon_campaign: System.get_env("PATREON_CAMPAIGN")
-
   config :fast_api, FastApi.Scheduler,
     jobs: [
       {"55 * * * *", {FastApi.Sync.GW2API, :dailies, []}},

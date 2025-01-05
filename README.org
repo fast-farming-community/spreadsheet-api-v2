@@ -1,5 +1,23 @@
 * FastApi
 
+** Local Development
+
+- Create a ~.env~ file containing:
+
+  - ~GOOGLE_APPLICATION_CREDENTIALS~
+  - ~DATABASE_URL~
+  - ~SECRET_KEY_BASE~
+  - ~PATREON_API_KEY~
+  - ~PATREON_CAMPAIGN~
+
+- Source the ~.env~ file
+- Start the local environment ~task local-env~
+- Create the ~fast_api_dev~ or ~fast_api_test~ databse using the PgAdmin UI
+- Create the tables ~task migrate~
+- Seed the database ~task seed~
+- Start the application ~task run-dev~
+~ Run ~FastApi.Sync.Features.execute(FastApi.Schemas.Fast.Table)~ to fetch the rows
+
 ** Setup
 
 Ensure that the following environment variables have been defined:

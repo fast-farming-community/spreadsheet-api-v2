@@ -25,7 +25,7 @@ Enum.each(
 if Mix.env() in [:dev, :test] do
   now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-  seeds = "priv/repo/seeds.json" |> File.read!() |> Jason.decode!(keys: :atoms) |> dbg()
+  seeds = "priv/repo/seeds.json" |> File.read!() |> Jason.decode!(keys: :atoms)
 
   add_timestamps = fn map ->
     map

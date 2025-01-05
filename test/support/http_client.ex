@@ -1,6 +1,18 @@
 defmodule FastApi.Test.Support.HttpClient do
   @moduledoc false
 
+  def get(path, token) do
+    :get
+    |> Finch.build(
+      "#{url()}/#{path}",
+      [{"Content-Type", "application/json"}, {"Authorization", "Bearer #{token}"}]
+    )
+    |> Finch.request(FastApi.Finch)
+    |> then(fn {:ok, %Finch.Response{body: body}} ->
+      {:ok, Jason.decode!(body, keys: :atoms)}
+    end)
+  end
+
   def post(path, body) do
     :post
     |> Finch.build(

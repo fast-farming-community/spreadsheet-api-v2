@@ -1,5 +1,8 @@
 version: '3'
 
+dotenv:
+  - ".env"
+
 tasks:
   apply-seeds:
     cmds:
@@ -25,6 +28,10 @@ tasks:
     env:
       MIX_ENV: prod
 
+  load-env:
+    cmds:
+      - source .env
+
   lint:
     cmds:
       - mix dialyzer
@@ -32,11 +39,17 @@ tasks:
     env:
       MIX_ENV: test
 
+  migrate:
+    cmds:
+      - mix ecto.migrate
+    env:
+      MIX_ENV: dev
+
   run-dev:
     cmds:
-      - mix phx.server
+      - iex -S mix phx.server
     env:
-      MIX_ENV: test
+      MIX_ENV: dev
 
   restart-prod:
     cmds:
@@ -51,7 +64,23 @@ tasks:
     cmds:
       - ps -ea -o pid,command | grep [e]lixir | awk '{print $1}' | xargs kill -9
 
-  local-env:
+  local-env-down:
     cmds:
       - docker compose -f $(pwd)/docker/docker-compose.yaml down --remove-orphans
+
+  local-env-up:
+    cmds:
       - docker compose -f $(pwd)/docker/docker-compose.yaml up -d
+
+  local-env:
+    cmds:
+      - task: load-env
+      - task: local-env-down
+      - task: local-env-up
+      # - task: seed
+
+  seed:
+    cmds:
+      - mix run priv/repo/seeds.exs
+    env:
+      MIX_ENV: dev
