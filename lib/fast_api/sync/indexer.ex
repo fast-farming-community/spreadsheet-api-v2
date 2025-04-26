@@ -3,6 +3,8 @@ defmodule FastApi.Sync.Indexer do
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
 
+  require Logger
+
   def execute() do
     index =
       Fast.Feature
@@ -21,11 +23,15 @@ defmodule FastApi.Sync.Indexer do
   end
 
   defp page_tags(tables) do
-    Enum.flat_map(tables, fn %Fast.Table{rows: rows} ->
-      rows
-      |> Jason.decode!()
-      |> tl()
-      |> Enum.map(&Map.get(&1, "Name"))
+    Enum.flat_map(tables, fn %Fast.Table{range: range, rows: rows} ->
+      case Jason.decode!(rows) do
+        [] ->
+          Logger.error("Range #{range} does not contain any data.")
+          []
+
+        non_empty_list ->
+          non_empty_list |> tl() |> Enum.map(&Map.get(&1, "Name"))
+      end
     end)
   end
 
