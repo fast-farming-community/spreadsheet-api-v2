@@ -6,7 +6,7 @@ defmodule FastApiWeb.UserController do
   alias FastApi.Utils.Ecto, as: EctoUtils
   alias FastApi.Schemas.Auth.User
 
-  def change_password(_conn, _password_params) do
+  # def change_password(_conn, _password_params) do
     # token = conn.assigns[:access_token]
     # # TODO:
     # # - verify access_token
@@ -16,12 +16,45 @@ defmodule FastApiWeb.UserController do
     # case Auth.change_password(user, password_params) do
     #   {:ok, %User{} = user} ->
     #     login_success(conn, user)
-
+    #
     #   {:error, changeset} ->
     #     conn
     #     |> Plug.Conn.put_status(400)
     #     |> json(%{errors: EctoUtils.get_errors(changeset)})
     # end
+  # end
+
+  def change_password(conn, _password_params) do
+    token = conn.assigns[:access_token]
+
+    with {:ok, user} <- Auth.verify_access_token(token),
+        true <- Bcrypt.verify_pass(password_params["old_password"], user.password) do
+      update_params = %{
+        "password" => password_params["password"],
+       "password_confirmation" => password_params["password_confirmation"],
+       "email" => user.email
+     }
+
+     case Auth.change_password(user, update_params) do
+       {:ok, %User{} = updated_user} ->
+         login_success(conn, updated_user)
+
+       {:error, changeset} ->
+          conn
+         |> Plug.Conn.put_status(:bad_request)
+         |> json(%{errors: EctoUtils.get_errors(changeset)})
+     end
+    else
+      false ->
+       conn
+        |> Plug.Conn.put_status(:unauthorized)
+       |> json(%{errors: ["Old password is incorrect"]})
+
+     {:error, _reason} ->
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+       |> json(%{errors: ["Invalid or missing access token"]})
+    end
   end
 
   def pre_register(conn, user_params) do
