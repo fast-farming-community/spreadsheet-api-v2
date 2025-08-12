@@ -24,7 +24,7 @@ defmodule FastApiWeb.UserController do
     # end
   # end
 
-  def change_password(conn, _password_params) do
+  def change_password(conn, password_params) do
     token = conn.assigns[:access_token]
 
     with {:ok, user} <- Auth.verify_access_token(token),
