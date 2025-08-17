@@ -20,7 +20,7 @@ defmodule FastApi.Sync.Features do
     |> Enum.map(fn {table, changes} -> repo.changeset(table, changes) end)
     |> Enum.each(&Repo.update/1)
 
-    json_data = Jason.encode!(%{updated_at: DateTime.utc_now() |> DateTime.to_string()})
+    json_data = Jason.encode!(%{updated_at: DateTime.utc_now() |> DateTime.to_iso8601()})
 
     Fast.Metadata
     |> Repo.get_by(name: metadata_name(repo))
