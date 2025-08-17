@@ -167,13 +167,25 @@ defmodule FastApi.Sync.GW2API do
     Finch.build(:get, @prices)
     |> request_json()
   end
-
+  
   defp request_json(request, retry \\ 0) do
-    request
-    |> Finch.request(FastApi.Finch)
-    |> then(fn
+    case Finch.request(request, FastApi.Finch) do
       {:ok, %Finch.Response{body: body}} ->
-        Jason.decode!(body)
+        case Jason.decode(body) do
+          {:ok, decoded} when is_list(decoded) ->
+            decoded
+
+          {:ok, decoded} when is_map(decoded) ->
+            [decoded]  # wrap map in list for Enum.flat_map
+
+          {:ok, other} ->
+            Logger.error("Unexpected response from #{request.path}: #{inspect(other)}")
+            []
+
+          {:error, error} ->
+            Logger.error("Failed to decode JSON from #{request.path}: #{inspect(error)}")
+            []
+        end
 
       {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
         request_json(request, retry + 1)
@@ -181,7 +193,7 @@ defmodule FastApi.Sync.GW2API do
       {:error, error} ->
         Logger.error("Error requesting #{request.path}: #{inspect(error)}")
         []
-    end)
+    end
   end
 
   defp keys_to_atoms(map) do
