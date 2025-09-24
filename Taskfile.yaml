@@ -7,7 +7,8 @@ tasks:
 
   build-prod:
     cmds:
-      - mix release
+      - task: stop-prod
+      - mix release --overwrite
     env:
       MIX_ENV: prod
 
