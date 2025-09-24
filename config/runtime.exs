@@ -74,7 +74,7 @@ if config_env() == :prod do
       {"15 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
       {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
-      {"@hourly", {FastApi.Sync.Patreon, :sync_memberships, []}},
+      {"*/5 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
       {"@hourly", {FastApi.Sync.Public, :execute, []}},
       {"@daily", {FastApi.Sync.Indexer, :execute, []}}
