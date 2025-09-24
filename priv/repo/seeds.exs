@@ -13,7 +13,7 @@ alias FastApi.Schemas.Auth.Role
 alias FastApi.Schemas.Fast.{DetailFeature, DetailTable, Feature, Page, Table}
 
 Enum.each(
-  ["soldier", "legionnaire", "tribune", "khan-ur", "champion"],
+  ["free", "copper", "silver", "gold", "premium", "admin"],
   fn role ->
     case FastApi.Repo.get_by(Role, name: role) do
       %Role{} -> :ok

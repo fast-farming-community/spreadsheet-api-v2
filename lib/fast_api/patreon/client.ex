@@ -3,9 +3,10 @@ defmodule FastApi.Patreon.Client do
   require Logger
 
   @tiers %{
-    "5061127" => "legionnaire",
-    "5061143" => "tribune",
-    "5061144" => "khan-ur"
+    "23778194" => "copper",
+    "5061127" => "silver",
+    "5061143" => "gold",
+    "5061144" => "premium"
   }
 
   def active_patrons() do
@@ -63,7 +64,7 @@ defmodule FastApi.Patreon.Client do
          attributes: %{patron_status: "active_patron"} = patron,
          relationships: %{currently_entitled_tiers: %{data: [%{id: tier}]}}
        }) do
-    role = Map.get(@tiers, tier, "soldier")
+    role = Map.get(@tiers, tier, "free")
     [Map.put(patron, :role, role)]
   end
 

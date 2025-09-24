@@ -31,7 +31,7 @@ defmodule FastApi.Schemas.Auth do
     def changeset(user, params, :init) do
       user
       |> cast(params, [:email])
-      |> put_change(:role_id, "soldier")
+      |> put_change(:role_id, "free")
       |> validate_required([:email])
       |> validate_email()
     end

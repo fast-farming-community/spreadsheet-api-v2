@@ -25,7 +25,7 @@ defmodule FastApi.Sync.Patreon do
 
         %{email: email} = user ->
           members
-          |> Enum.find("soldier", fn
+          |> Enum.find_value("free", fn
             %{email: ^email, role: role} -> role
             _ -> false
           end)

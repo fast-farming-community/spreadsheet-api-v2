@@ -2,11 +2,12 @@ defmodule FastApi.Auth.Restrictions do
   @moduledoc "Applies restrictions to user access based on roles."
 
   @restrictions %{
-    "soldier" => [],
-    "legionnaire" => [],
-    "tribune" => [],
-    "khan-ur" => [],
-    "champion" => []
+    "free" => [],
+    "copper" => [],
+    "silver" => [],
+    "gold" => [],
+    "premium" => [],
+    "admin" => []
   }
 
   def restricted?(%{"Requires" => requires}, %{"role" => role}) do
@@ -14,7 +15,7 @@ defmodule FastApi.Auth.Restrictions do
   end
 
   def restricted?(%{"Requires" => requires}, nil) do
-    requires in Map.get(@restrictions, "soldier")
+    requires in Map.get(@restrictions, "free")
   end
 
   def restricted?(_, _) do
