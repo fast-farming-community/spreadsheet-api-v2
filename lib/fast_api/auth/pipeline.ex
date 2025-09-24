@@ -1,3 +1,4 @@
+# lib/fast_api/auth/pipeline.ex
 defmodule FastApi.Auth.Pipeline do
   @moduledoc "Authentication pipeline."
   use Guardian.Plug.Pipeline,
@@ -8,8 +9,4 @@ defmodule FastApi.Auth.Pipeline do
   plug Guardian.Plug.VerifyHeader,
     scheme: "Bearer",
     claims: %{"iss" => "fast_api", "typ" => "access"}
-
-  plug Guardian.Plug.EnsureAuthenticated
-
-  plug Guardian.Plug.LoadResource, allow_blank: false
 end

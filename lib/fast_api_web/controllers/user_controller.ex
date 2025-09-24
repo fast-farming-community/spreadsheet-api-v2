@@ -7,38 +7,49 @@ defmodule FastApiWeb.UserController do
   alias FastApi.Schemas.Auth.User
 
   def change_password(conn, password_params) do
-    user = Guardian.Plug.current_resource(conn)
+    token =
+      Guardian.Plug.current_token(conn) ||
+        (get_req_header(conn, "authorization")
+         |> List.first()
+         |> case do
+              "Bearer " <> t -> t
+              t when is_binary(t) -> t
+              _ -> nil
+            end)
 
-    cond do
-      is_nil(user) ->
-        conn
-        |> Plug.Conn.put_status(:unauthorized)
-        |> json(%{errors: ["Invalid or missing access token"]})
+    with {:ok, user, _claims} <-
+           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}),
+         true <- Bcrypt.verify_pass(password_params["old_password"] || "", user.password) do
+      new_password = password_params["password"] || password_params["new_password"]
 
-      not Bcrypt.verify_pass(password_params["old_password"] || "", user.password) ->
+      update_params = %{
+        "password" => new_password,
+        "password_confirmation" => password_params["password_confirmation"],
+        "email" => user.email
+      }
+
+      case Auth.change_password(user, update_params) do
+        {:ok, %User{} = updated_user} ->
+          # issue fresh tokens after password change
+          {:ok, access, _}  = Auth.Token.access_token(updated_user)
+          {:ok, refresh, _} = Auth.Token.refresh_token(updated_user)
+          json(conn, %{access: access, refresh: refresh})
+
+        {:error, changeset} ->
+          conn
+          |> Plug.Conn.put_status(:bad_request)
+          |> json(%{errors: EctoUtils.get_errors(changeset)})
+      end
+    else
+      false ->
         conn
         |> Plug.Conn.put_status(:unauthorized)
         |> json(%{errors: ["Old password is incorrect"]})
 
-      true ->
-        new_password = password_params["password"] || password_params["new_password"]
-
-        update_params = %{
-          "password" => new_password,
-          "password_confirmation" => password_params["password_confirmation"],
-          "email" => user.email
-        }
-
-        case Auth.change_password(user, update_params) do
-          {:ok, %User{} = updated_user} ->
-            # Issue fresh tokens after password change
-            login_success(conn, updated_user)
-
-          {:error, changeset} ->
-            conn
-            |> Plug.Conn.put_status(:bad_request)
-            |> json(%{errors: EctoUtils.get_errors(changeset)})
-        end
+      _ ->
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+        |> json(%{errors: ["Invalid or missing access token"]})
     end
   end
 
