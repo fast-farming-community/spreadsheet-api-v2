@@ -41,6 +41,8 @@ config :fast_api,
 config :swoosh, :api_client, false
 
 # Configures Elixir's Logger
+config :logger, level: :warn
+
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
