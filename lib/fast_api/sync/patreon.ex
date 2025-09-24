@@ -20,7 +20,7 @@ defmodule FastApi.Sync.Patreon do
     Enum.each(
       users,
       fn
-        %{role_id: "champion"} ->
+        %{role_id: "admin"} ->
           :ok
 
         %{email: email} = user ->
