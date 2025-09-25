@@ -41,7 +41,8 @@ config :fast_api,
 config :swoosh, :api_client, false
 
 # Configures Elixir's Logger
-config :logger, level: :warn
+config :logger,
+  level: :info 
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
@@ -49,7 +50,7 @@ config :logger, :console,
 
 # Silence Phoenix request logs
 config :phoenix, :logger,
-  level: :warn,
+  level: :warning,
   filter_parameters: ["password", "token", "authorization"]
 
 # Use Jason for JSON parsing in Phoenix
