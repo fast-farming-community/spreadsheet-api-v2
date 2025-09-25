@@ -13,7 +13,6 @@ defmodule FastApi.Sync.Patreon do
 
   def sync_memberships() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] patreon.sync_memberships started")
 
     {:ok, members} = Client.active_patrons()
 

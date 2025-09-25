@@ -131,7 +131,7 @@ defmodule FastApi.Sync.Features do
       {:ok, %{valueRanges: vrs}} ->
         returned = length(vrs || [])
         planned_after = min(idx * @batch_size + returned, total_ranges)
-        Logger.info("Fetched chunk #{idx + 1}/#{total} pid=#{pid_label} returned=#{returned} progress=#{planned_after}/#{total_ranges}")
+        Logger.info("Fetched chunk #{idx + 1}/#{total} pid=#{pid_label} progress=#{planned_after}/#{total_ranges}")
 
       {:error, error} ->
         Logger.error("Chunk #{idx + 1}/#{total} pid=#{pid_label} API error: #{inspect(error)}")
