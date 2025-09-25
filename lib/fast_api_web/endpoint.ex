@@ -29,6 +29,9 @@ defmodule FastApiWeb.Endpoint do
   plug Plug.RequestId
   # plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  # Auto-Ban Bots/Crawlers
+  plug FastApiWeb.Plugs.AutoBan
+
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
