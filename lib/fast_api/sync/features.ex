@@ -24,17 +24,16 @@ defmodule FastApi.Sync.Features do
 
   # public entrypoint with retry wrapper
   def execute(repo) do
-    # --- START LINE (1/2) ---
     repo_tag = metadata_name(repo)
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] features.execute(#{repo_tag}) — started")
 
-    retry_execute(repo, 1)
-  after
-    # --- END LINE (2/2) ---
-    repo_tag = metadata_name(repo)
-    dt = System.monotonic_time(:millisecond) - (t0 || System.monotonic_time(:millisecond))
-    Logger.info("[job] features.execute(#{repo_tag}) — completed in #{dt}ms")
+    try do
+      retry_execute(repo, 1)
+    after
+      dt = System.monotonic_time(:millisecond) - t0
+      Logger.info("[job] features.execute(#{repo_tag}) — completed in #{dt}ms")
+    end
   end
 
   defp retry_execute(repo, attempt) when attempt <= @max_retries do
