@@ -70,10 +70,10 @@ if config_env() == :prod do
   config :fast_api, FastApi.Scheduler,
     jobs: [
       {"45 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-      {"59 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
+      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
       {"1 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
-      {"*/5 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
+      {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
       {"@hourly", {FastApi.Sync.Public, :execute, []}},
       {"@daily", {FastApi.Sync.Indexer, :execute, []}}
