@@ -13,12 +13,14 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
   def call(conn, _opts) do
     ensure_table_race_safe!()
-    ip = client_ip(conn)
+
+    ip_raw = client_ip(conn)
+    ip = normalize_ip(ip_raw)
     now = System.system_time(:millisecond)
 
     case :ets.lookup(@ban_table, ip) do
       [{^ip, until}] when until > now ->
-        # already banned → block quietly with 403
+        # already banned → block quietly with 403 (no extra logs)
         conn |> send_resp(403, "Forbidden") |> halt()
 
       [{^ip, _expired}] ->
@@ -48,10 +50,15 @@ defmodule FastApiWeb.Plugs.AutoBan do
     key_p = key_q || extract_key_from_path(path)
 
     if feature_hit? and key_p && key_malformed?(key_p) and not MapSet.member?(@allow, ip) do
-      :ets.insert(@ban_table, {ip, now + @ban_ms})
-      log_ban_once(conn, ip, "auto-ban malformed-key", key_p)
-      # First offending request → 410 Gone
-      conn |> send_resp(410, "Gone") |> halt()
+      # Atomic insert: only the very first request for this IP will succeed
+      if :ets.insert_new(@ban_table, {ip, now + @ban_ms}) do
+        # First offender → log once and send 410 Gone
+        log_ban_once(conn, ip, "auto-ban malformed-key", key_p)
+        conn |> send_resp(410, "Gone") |> halt()
+      else
+        # Another concurrent request already banned it → silent 403
+        conn |> send_resp(403, "Forbidden") |> halt()
+      end
     else
       conn
     end
@@ -94,6 +101,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
     end
   end
 
+  # Prefer X-Forwarded-For first IP, then X-Real-IP, else remote_ip tuple
   defp client_ip(conn) do
     xff = get_req_header(conn, "x-forwarded-for") |> List.first()
     cond do
@@ -105,11 +113,16 @@ defmodule FastApiWeb.Plugs.AutoBan do
     end
   end
 
+  defp normalize_ip(nil), do: "-"
+  # Normalize IPv6-mapped IPv4 like "::ffff:34.116.22.40" -> "34.116.22.40"
+  defp normalize_ip("::ffff:" <> rest), do: rest
+  defp normalize_ip(ip), do: ip
+
   defp ip_to_string(nil), do: "-"
   defp ip_to_string(tuple) when is_tuple(tuple), do: :inet.ntoa(tuple) |> to_string()
   defp ip_to_string(str) when is_binary(str), do: str
 
-  # Log once, when a new IP is banned
+  # Log only on the first ban insert; repeat banned hits are silent
   defp log_ban_once(conn, ip, reason, key \\ nil) do
     ua = get_req_header(conn, "user-agent") |> List.first() || "-"
     key_part = if key, do: ~s| key="#{String.replace(to_string(key), ~r/[\r\n"]/, " ")}"|, else: ""
