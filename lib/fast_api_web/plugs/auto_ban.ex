@@ -5,19 +5,17 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
   @ban_table :fast_ip_banlist
   @ban_ms 24 * 60 * 60 * 1000 # 24h
-  @allow ~w(127.0.0.1 ::1)    # add trusted proxies if needed
+  @allow MapSet.new(~w(127.0.0.1 ::1)) # add trusted proxies if needed
 
   def init(opts), do: opts
-
   def call(%Plug.Conn{method: "OPTIONS"} = conn, _opts), do: conn
 
   def call(conn, _opts) do
     ensure_tables!()
 
-    ip = ip_to_string(conn.remote_ip)
+    ip  = client_ip(conn)
     now = System.system_time(:millisecond)
 
-    # 1) If already banned, block everything immediately.
     case :ets.lookup(@ban_table, ip) do
       [{^ip, until}] when until > now ->
         return_forbidden(conn, ip, reason: "banned")
@@ -29,15 +27,13 @@ defmodule FastApiWeb.Plugs.AutoBan do
     end
   end
 
-  # Ban if request matches our pattern (feature=salvageable),
-  # i.e., exactly when the bot generates those keys.
+  # Ban exactly when the crawler hits feature=salvageable
   defp maybe_ban_by_request(conn, ip, now) do
     qs = conn.query_string || ""
     path_qs = ((conn.request_path || "") <> "?" <> qs) |> String.downcase()
 
-    if String.contains?(path_qs, "feature=salvageable") and not (ip in @allow) do
+    if String.contains?(path_qs, "feature=salvageable") and not MapSet.member?(@allow, ip) do
       :ets.insert(@ban_table, {ip, now + @ban_ms})
-
       log_block(conn, ip, "auto-ban feature=salvageable")
       conn |> send_resp(403, "Forbidden") |> halt()
     else
@@ -48,9 +44,36 @@ defmodule FastApiWeb.Plugs.AutoBan do
   defp ensure_tables!() do
     case :ets.whereis(@ban_table) do
       :undefined ->
-        :ets.new(@ban_table, [:set, :public, :named_table, read_concurrency: true])
+        :ets.new(@ban_table, [:set, :public, :named_table,
+                              read_concurrency: true, write_concurrency: true])
       _ -> :ok
     end
+  end
+
+  defp client_ip(conn) do
+    # Try X-Forwarded-For: first IP in the list
+    xff =
+      get_req_header(conn, "x-forwarded-for")
+      |> List.first()
+      |> case do
+        nil -> nil
+        s   ->
+          s
+          |> String.split(",", trim: true)
+          |> List.first()
+          |> String.trim()
+      end
+
+    ip =
+      cond do
+        xff && xff != "" -> xff
+        true ->
+          xr = get_req_header(conn, "x-real-ip") |> List.first()
+          if xr && xr != "", do: xr, else: ip_to_string(conn.remote_ip)
+      end
+
+    # Normalize to dotted/colon notation if it's a tuple
+    ip
   end
 
   defp return_forbidden(conn, ip, opts) do
