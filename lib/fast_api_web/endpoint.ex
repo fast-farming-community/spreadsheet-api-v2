@@ -29,6 +29,10 @@ defmodule FastApiWeb.Endpoint do
   plug Plug.RequestId
   # plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  plug Plug.RemoteIp,
+    headers: ~w[forwarded x-forwarded-for x-real-ip cf-connecting-ip fastly-client-ip true-client-ip],
+    proxies: :any
+
   # Auto-Ban Bots/Crawlers
   plug FastApiWeb.Plugs.AutoBan
 
