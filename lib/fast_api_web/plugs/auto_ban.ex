@@ -18,7 +18,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
     case :ets.lookup(@ban_table, ip) do
       [{^ip, until}] when until > now ->
-        # already banned → block quietly (no extra logs)
+        # already banned → block quietly with 403
         conn |> send_resp(403, "Forbidden") |> halt()
 
       [{^ip, _expired}] ->
@@ -48,10 +48,10 @@ defmodule FastApiWeb.Plugs.AutoBan do
     key_p = key_q || extract_key_from_path(path)
 
     if feature_hit? and key_p && key_malformed?(key_p) and not MapSet.member?(@allow, ip) do
-      # First time we see this IP → insert ban and log once
       :ets.insert(@ban_table, {ip, now + @ban_ms})
       log_ban_once(conn, ip, "auto-ban malformed-key", key_p)
-      conn |> send_resp(403, "Forbidden") |> halt()
+      # First offending request → 410 Gone
+      conn |> send_resp(410, "Gone") |> halt()
     else
       conn
     end
@@ -109,7 +109,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
   defp ip_to_string(tuple) when is_tuple(tuple), do: :inet.ntoa(tuple) |> to_string()
   defp ip_to_string(str) when is_binary(str), do: str
 
-  # Log only on the first ban insert; repeat banned hits are silent
+  # Log once, when a new IP is banned
   defp log_ban_once(conn, ip, reason, key \\ nil) do
     ua = get_req_header(conn, "user-agent") |> List.first() || "-"
     key_part = if key, do: ~s| key="#{String.replace(to_string(key), ~r/[\r\n"]/, " ")}"|, else: ""
