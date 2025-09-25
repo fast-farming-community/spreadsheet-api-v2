@@ -24,29 +24,39 @@ defmodule FastApi.Sync.Features do
 
   # public entrypoint with retry wrapper
   def execute(repo) do
+    # --- START LINE (1/2) ---
+    repo_tag = metadata_name(repo)
+    t0 = System.monotonic_time(:millisecond)
+    Logger.info("[job] features.execute(#{repo_tag}) — started")
+
     retry_execute(repo, 1)
+  after
+    # --- END LINE (2/2) ---
+    repo_tag = metadata_name(repo)
+    dt = System.monotonic_time(:millisecond) - (t0 || System.monotonic_time(:millisecond))
+    Logger.info("[job] features.execute(#{repo_tag}) — completed in #{dt}ms")
   end
 
   defp retry_execute(repo, attempt) when attempt <= @max_retries do
     try do
       do_execute(repo)
+    rescue
+      e in RuntimeError ->
+        # business errors bubble as before
+        reraise e, __STACKTRACE__
     catch
-      :exit, {:timeout, _} = reason ->
+      :exit, {:timeout, _} ->
         Logger.warning("GSheets fetch timeout (#{attempt}/#{@max_retries}); retrying…")
         Process.sleep(:timer.seconds(attempt * 2))
         retry_execute(repo, attempt + 1)
 
-      :exit, reason ->
+      :exit, _reason ->
         # propagate other exits
-        :erlang.raise(:exit, reason, __STACKTRACE__)
-    rescue
-      e in RuntimeError ->
-        # raise normally for business errors
-        reraise e, __STACKTRACE__
+        :erlang.raise(:exit, :error, __STACKTRACE__)
     end
   end
 
-  defp retry_execute(repo, attempt) when attempt > @max_retries do
+  defp retry_execute(repo, _attempt) do
     Logger.error("GSheets fetch timeout after #{@max_retries} attempts; giving up.")
     do_execute(repo)
   end

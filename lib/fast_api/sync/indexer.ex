@@ -6,6 +6,10 @@ defmodule FastApi.Sync.Indexer do
   require Logger
 
   def execute() do
+    # --- START LINE (1/2) ---
+    t0 = System.monotonic_time(:millisecond)
+    Logger.info("[job] indexer.execute — started")
+
     index =
       Fast.Feature
       |> Repo.all()
@@ -20,6 +24,12 @@ defmodule FastApi.Sync.Indexer do
     |> Repo.get_by(name: "index")
     |> Fast.Metadata.changeset(%{data: Jason.encode!(index)})
     |> Repo.update()
+
+    # --- END LINE (2/2) ---
+    dt = System.monotonic_time(:millisecond) - t0
+    Logger.info("[job] indexer.execute — completed in #{dt}ms indexed=#{length(index)}")
+
+    :ok
   end
 
   defp page_tags(tables) do

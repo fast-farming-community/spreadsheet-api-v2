@@ -7,22 +7,41 @@ defmodule FastApi.Sync.Public do
   require Logger
 
   def execute() do
+    # --- START LINE (1/2) ---
+    t0 = System.monotonic_time(:millisecond)
+    Logger.info("[job] public.execute — started")
+
+    changelog_dt = github_file_last_update("CHANGELOG.md")
+    updates_dt   = github_file_last_update("WEBSITE_CONTENT_UPDATES.md")
+    todos_dt     = github_file_last_update("WEBSITE_TODOS.md")
+
     json_data =
       Jason.encode!(%{
-        changelog: %{updated_at: github_file_last_update("CHANGELOG.md")},
-        content_updates: %{updated_at: github_file_last_update("WEBSITE_CONTENT_UPDATES.md")},
-        todos: %{updated_at: github_file_last_update("WEBSITE_TODOS.md")}
+        changelog: %{updated_at: changelog_dt},
+        content_updates: %{updated_at: updates_dt},
+        todos: %{updated_at: todos_dt}
       })
 
-    case Repo.get_by(Fast.Metadata, name: "public") do
-      nil ->
-        Repo.insert(%Fast.Metadata{name: "public", data: json_data})
+    result =
+      case Repo.get_by(Fast.Metadata, name: "public") do
+        nil ->
+          Repo.insert(%Fast.Metadata{name: "public", data: json_data})
 
-      public_metadata ->
-        public_metadata
-        |> Fast.Metadata.changeset(%{data: json_data})
-        |> Repo.update()
-    end
+        public_metadata ->
+          public_metadata
+          |> Fast.Metadata.changeset(%{data: json_data})
+          |> Repo.update()
+      end
+
+    # --- END LINE (2/2) ---
+    dt = System.monotonic_time(:millisecond) - t0
+    ok_count =
+      [changelog_dt, updates_dt, todos_dt]
+      |> Enum.count(&(&1 != ""))
+
+    Logger.info("[job] public.execute — completed in #{dt}ms files=3 resolved=#{ok_count}")
+
+    result
   end
 
   def github_file_last_update(filename) do
@@ -32,15 +51,21 @@ defmodule FastApi.Sync.Public do
       [{"Content-Type", "application/vnd.github+json"}, {"X-GitHub-Api-Version", "2022-11-28"}]
     )
     |> Finch.request(FastApi.Finch)
-    |> then(fn
-      {:ok, %Finch.Response{body: body}} ->
-        body
-        |> Jason.decode!(keys: :atoms)
-        |> then(fn [commit] -> commit.commit.committer.date end)
+    |> case do
+      {:ok, %Finch.Response{status: status, body: body}} ->
+        with {:ok, decoded} <- Jason.decode(body, keys: :atoms),
+             [commit] <- decoded,
+             date when is_binary(date) <- get_in(commit, [:commit, :committer, :date]) do
+          date
+        else
+          other ->
+            Logger.error("GitHub parse error for #{filename} (status #{status}): #{inspect(other)}")
+            ""
+        end
 
       {:error, error} ->
-        Logger.error("Error requesting #{filename} from GitHub: #{error}")
+        Logger.error("Error requesting #{filename} from GitHub: #{inspect(error)}")
         ""
-    end)
+    end
   end
 end

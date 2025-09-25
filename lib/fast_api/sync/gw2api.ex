@@ -7,7 +7,6 @@ defmodule FastApi.Sync.GW2API do
 
   require Logger
 
-  @dailies "https://api.guildwars2.com/v2/achievements/daily"
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
   @step 150
@@ -33,37 +32,51 @@ defmodule FastApi.Sync.GW2API do
     :ok
   end
 
-  @spec sync_prices() :: :ok
+  @spec sync_prices() :: {:ok, non_neg_integer}
   def sync_prices do
-    from(item in Fast.Item,
-      where: item.tradable == true,
-      select: item
-    )
-    |> Repo.all()
-    |> get_item_details()
-    |> Enum.each(fn
-      {%Fast.Item{id: id, vendor_value: vendor_value} = item,
-       %{id: id, buys: %{"unit_price" => buy} = buys} = changes} ->
-        buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
+    # --- START LINE (1/2) ---
+    t0 = System.monotonic_time(:millisecond)
+    Logger.info("[job] gw2.sync_prices — started")
 
-        item
-        |> Fast.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
-        |> Repo.update()
+    updated =
+      from(item in Fast.Item,
+        where: item.tradable == true,
+        select: item
+      )
+      |> Repo.all()
+      |> get_item_details()
+      |> Enum.reduce(0, fn
+        {%Fast.Item{id: id, vendor_value: vendor_value} = item,
+         %{id: id, buys: %{"unit_price" => buy} = buys} = changes},
+         acc ->
+          buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
 
-      {item, changes} ->
-        Logger.error("Mismatching ids for item #{inspect(item)} and data #{inspect(changes)}")
-    end)
+          item
+          |> Fast.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
+          |> Repo.update()
+
+          acc + 1
+
+        {_item, _changes}, acc ->
+          acc
+      end)
+
+    # --- END LINE (2/2) ---
+    dt = System.monotonic_time(:millisecond) - t0
+    Logger.info("[job] gw2.sync_prices — completed in #{dt}ms updated=#{updated}")
+
+    {:ok, updated}
   end
 
   defp get_item_details(items) do
-   items
-   |> Enum.chunk_every(@step)
-   |> Enum.flat_map(fn chunk ->
+    items
+    |> Enum.chunk_every(@step)
+    |> Enum.flat_map(fn chunk ->
       ids      = Enum.map(chunk, & &1.id)
       req_url  = "#{@prices}?ids=#{Enum.map_join(chunk, ",", & &1.id)}"
 
       result =
-       Finch.build(:get, req_url)
+        Finch.build(:get, req_url)
         |> request_json()
         |> Enum.map(fn
           %{} = m -> keys_to_atoms(m)
@@ -100,9 +113,12 @@ defmodule FastApi.Sync.GW2API do
     end)
   end
 
-
   def sync_sheet do
-    sync_prices()
+    # --- START LINE (1/2) ---
+    t0 = System.monotonic_time(:millisecond)
+    Logger.info("[job] gw2.sync_sheet — started")
+
+    {:ok, updated_prices} = sync_prices()
 
     items =
       Fast.Item
@@ -123,6 +139,12 @@ defmodule FastApi.Sync.GW2API do
         body: %{values: items},
         valueInputOption: "RAW"
       )
+
+    # --- END LINE (2/2) ---
+    dt = System.monotonic_time(:millisecond) - t0
+    Logger.info("[job] gw2.sync_sheet — completed in #{dt}ms prices_updated=#{updated_prices} rows_written=#{length(items)}")
+
+    :ok
   end
 
   defp get_details(ids, base_url) do
@@ -154,42 +176,41 @@ defmodule FastApi.Sync.GW2API do
     Finch.build(:get, @prices)
     |> request_json()
   end
-  
+
   defp request_json(request, retry \\ 0) do
-  case Finch.request(request, FastApi.Finch) do
-    {:ok, %Finch.Response{status: status, body: body}} ->
-      case Jason.decode(body) do
-        {:ok, decoded} when is_list(decoded) ->
-          if status != 200 do
-            Logger.error("HTTP #{status} with list body from remote: #{inspect(Enum.take(decoded, 1))}")
-          end
-          decoded
+    case Finch.request(request, FastApi.Finch) do
+      {:ok, %Finch.Response{status: status, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, decoded} when is_list(decoded) ->
+            if status != 200 do
+              Logger.error("HTTP #{status} with list body from remote: #{inspect(Enum.take(decoded, 1))}")
+            end
+            decoded
 
-        {:ok, decoded} when is_map(decoded) ->
-          if status != 200 do
-            Logger.error("HTTP #{status} with map body from remote: #{inspect(decoded)}")
-          end
-          [decoded]  # wrap map in list for Enum.flat_map
+          {:ok, decoded} when is_map(decoded) ->
+            if status != 200 do
+              Logger.error("HTTP #{status} with map body from remote: #{inspect(decoded)}")
+            end
+            [decoded]
 
-        {:ok, other} ->
-          Logger.error("Unexpected JSON shape (status #{status}): #{inspect(other)}")
-          []
+          {:ok, other} ->
+            Logger.error("Unexpected JSON shape (status #{status}): #{inspect(other)}")
+            []
 
-        {:error, error} ->
-          Logger.error("Failed to decode JSON (status #{status}): #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 400))}")
-          []
-      end
+          {:error, error} ->
+            Logger.error("Failed to decode JSON (status #{status}): #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 400))}")
+            []
+        end
 
-    {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
-      Logger.warning("HTTP timeout (#{retry + 1}/5), retrying…")
-      request_json(request, retry + 1)
+      {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
+        Logger.warning("HTTP timeout (#{retry + 1}/5), retrying…")
+        request_json(request, retry + 1)
 
-    {:error, error} ->
-      Logger.error("HTTP request error: #{inspect(error)}")
-      []
+      {:error, error} ->
+        Logger.error("HTTP request error: #{inspect(error)}")
+        []
+    end
   end
-end
-
 
   defp keys_to_atoms(map) do
     Enum.into(map, %{}, fn {key, value} -> {String.to_atom(key), value} end)
