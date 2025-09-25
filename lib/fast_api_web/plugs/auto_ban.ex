@@ -18,10 +18,13 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
     case :ets.lookup(@ban_table, ip) do
       [{^ip, until}] when until > now ->
-        return_forbidden(conn, ip, reason: "banned")
+        # already banned → block quietly (no extra logs)
+        conn |> send_resp(403, "Forbidden") |> halt()
+
       [{^ip, _expired}] ->
         :ets.delete(@ban_table, ip)
         maybe_ban_by_request(conn, ip, now)
+
       [] ->
         maybe_ban_by_request(conn, ip, now)
     end
@@ -45,8 +48,9 @@ defmodule FastApiWeb.Plugs.AutoBan do
     key_p = key_q || extract_key_from_path(path)
 
     if feature_hit? and key_p && key_malformed?(key_p) and not MapSet.member?(@allow, ip) do
+      # First time we see this IP → insert ban and log once
       :ets.insert(@ban_table, {ip, now + @ban_ms})
-      log_ban(conn, ip, "auto-ban malformed-key", key_p)
+      log_ban_once(conn, ip, "auto-ban malformed-key", key_p)
       conn |> send_resp(403, "Forbidden") |> halt()
     else
       conn
@@ -59,12 +63,9 @@ defmodule FastApiWeb.Plugs.AutoBan do
     idx = Enum.find_index(segs, fn s -> String.downcase(s) == "salvageable" end)
 
     cond do
-      idx && idx + 1 < length(segs) ->
-        segs |> Enum.at(idx + 1) |> URI.decode()
-      segs != [] ->
-        segs |> List.last() |> URI.decode()
-      true ->
-        nil
+      idx && idx + 1 < length(segs) -> segs |> Enum.at(idx + 1) |> URI.decode()
+      segs != [] -> segs |> List.last() |> URI.decode()
+      true -> nil
     end
   end
   defp extract_key_from_path(_), do: nil
@@ -78,6 +79,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
   end
   defp key_malformed?(_), do: false
 
+  # Create ETS table safely under concurrency
   defp ensure_table_race_safe!() do
     case :ets.whereis(@ban_table) do
       :undefined ->
@@ -107,12 +109,8 @@ defmodule FastApiWeb.Plugs.AutoBan do
   defp ip_to_string(tuple) when is_tuple(tuple), do: :inet.ntoa(tuple) |> to_string()
   defp ip_to_string(str) when is_binary(str), do: str
 
-  defp return_forbidden(conn, ip, opts) do
-    log_ban(conn, ip, opts[:reason] || "banned", Map.get(conn.params, "key"))
-    conn |> send_resp(403, "Forbidden") |> halt()
-  end
-
-  defp log_ban(conn, ip, reason, key \\ nil) do
+  # Log only on the first ban insert; repeat banned hits are silent
+  defp log_ban_once(conn, ip, reason, key \\ nil) do
     ua = get_req_header(conn, "user-agent") |> List.first() || "-"
     key_part = if key, do: ~s| key="#{String.replace(to_string(key), ~r/[\r\n"]/, " ")}"|, else: ""
     Logger.warning(fn ->
