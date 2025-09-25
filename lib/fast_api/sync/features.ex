@@ -11,6 +11,13 @@ defmodule FastApi.Sync.Features do
   @batch_size 80
   @max_retries 3
 
+  defp fmt_ms(ms) do
+    total = div(ms, 1000)
+    mins = div(total, 60)
+    secs = rem(total, 60)
+    "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
+  end
+
   defp concurrency() do
     case System.get_env("GSHEETS_CONCURRENCY") do
       nil -> 5
@@ -32,7 +39,7 @@ defmodule FastApi.Sync.Features do
       retry_execute(repo, 1)
     after
       dt = System.monotonic_time(:millisecond) - t0
-      Logger.info("[job] features.execute(#{repo_tag}) — completed in #{dt}ms")
+      Logger.info("[job] features.execute(#{repo_tag}) — completed in #{fmt_ms(dt)}")
     end
   end
 
@@ -60,7 +67,6 @@ defmodule FastApi.Sync.Features do
     do_execute(repo)
   end
 
-  # --- actual work unchanged below ---
   defp do_execute(repo) do
     list = Repo.all(repo)
     len  = length(list)

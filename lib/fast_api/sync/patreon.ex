@@ -4,8 +4,14 @@ defmodule FastApi.Sync.Patreon do
   alias FastApi.Patreon.Client
   require Logger
 
+  defp fmt_ms(ms) do
+    total = div(ms, 1000)
+    mins = div(total, 60)
+    secs = rem(total, 60)
+    "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
+  end
+
   def sync_memberships() do
-    # --- START LINE (1/2) ---
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] patreon.sync_memberships — started")
 
@@ -21,15 +27,13 @@ defmodule FastApi.Sync.Patreon do
         end
       end)
 
-    # --- END LINE (2/2) ---
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] patreon.sync_memberships — completed in #{dt}ms refreshed=#{refreshed} total_members=#{length(members)}")
+    Logger.info("[job] patreon.sync_memberships — completed in #{fmt_ms(dt)} refreshed=#{refreshed} total_members=#{length(members)}")
 
     :ok
   end
 
   def clear_memberships() do
-    # --- START LINE (1/2) ---
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] patreon.clear_memberships — started")
 
@@ -49,9 +53,8 @@ defmodule FastApi.Sync.Patreon do
           if role == "free", do: {p + 1, u, a}, else: {p, u + 1, a}
       end)
 
-    # --- END LINE (2/2) ---
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] patreon.clear_memberships — completed in #{dt}ms pruned=#{pruned} updated=#{updated} admins_skipped=#{skipped_admin} users_total=#{length(users)}")
+    Logger.info("[job] patreon.clear_memberships — completed in #{fmt_ms(dt)} pruned=#{pruned} updated=#{updated} admins_skipped=#{skipped_admin} users_total=#{length(users)}")
 
     :ok
   end

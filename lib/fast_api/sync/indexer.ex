@@ -5,8 +5,14 @@ defmodule FastApi.Sync.Indexer do
 
   require Logger
 
+  defp fmt_ms(ms) do
+    total = div(ms, 1000)
+    mins = div(total, 60)
+    secs = rem(total, 60)
+    "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
+  end
+
   def execute() do
-    # --- START LINE (1/2) ---
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] indexer.execute — started")
 
@@ -25,9 +31,8 @@ defmodule FastApi.Sync.Indexer do
     |> Fast.Metadata.changeset(%{data: Jason.encode!(index)})
     |> Repo.update()
 
-    # --- END LINE (2/2) ---
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] indexer.execute — completed in #{dt}ms indexed=#{length(index)}")
+    Logger.info("[job] indexer.execute — completed in #{fmt_ms(dt)} indexed=#{length(index)}")
 
     :ok
   end

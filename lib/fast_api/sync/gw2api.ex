@@ -11,7 +11,13 @@ defmodule FastApi.Sync.GW2API do
   @prices "https://api.guildwars2.com/v2/commerce/prices"
   @step 150
 
-  # WIP: Cleanup
+  defp fmt_ms(ms) do
+    total = div(ms, 1000)
+    mins = div(total, 60)
+    secs = rem(total, 60)
+    "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
+  end
+
   @spec sync_items() :: :ok
   def sync_items do
     item_ids = get_item_ids()
@@ -34,7 +40,6 @@ defmodule FastApi.Sync.GW2API do
 
   @spec sync_prices() :: {:ok, non_neg_integer}
   def sync_prices do
-    # --- START LINE (1/2) ---
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] gw2.sync_prices — started")
 
@@ -61,9 +66,8 @@ defmodule FastApi.Sync.GW2API do
           acc
       end)
 
-    # --- END LINE (2/2) ---
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] gw2.sync_prices — completed in #{dt}ms updated=#{updated}")
+    Logger.info("[job] gw2.sync_prices — completed in #{fmt_ms(dt)} updated=#{updated}")
 
     {:ok, updated}
   end
@@ -85,7 +89,6 @@ defmodule FastApi.Sync.GW2API do
             %{}
         end)
 
-      # Separate good rows (with :id) from bad rows (missing :id)
       {good, bad} = Enum.split_with(result, &match?(%{id: _}, &1))
 
       if bad != [] do
@@ -97,10 +100,8 @@ defmodule FastApi.Sync.GW2API do
         """)
       end
 
-      # Build a map by id for stable pairing
       result_by_id = for %{id: id} = m <- good, into: %{}, do: {id, m}
 
-      # Partition requested chunk into matching/missing ids
       {matching, missing} = Enum.split_with(chunk, fn item -> Map.has_key?(result_by_id, item.id) end)
 
       if missing != [] do
@@ -108,13 +109,11 @@ defmodule FastApi.Sync.GW2API do
         Logger.error("GW2 prices API missing entries for ids=#{inspect(missing_ids)} url=#{req_url}")
       end
 
-      # Return only pairs that we actually have data for
       Enum.map(matching, fn item -> {item, Map.fetch!(result_by_id, item.id)} end)
     end)
   end
 
   def sync_sheet do
-    # --- START LINE (1/2) ---
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] gw2.sync_sheet — started")
 
@@ -140,9 +139,8 @@ defmodule FastApi.Sync.GW2API do
         valueInputOption: "RAW"
       )
 
-    # --- END LINE (2/2) ---
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] gw2.sync_sheet — completed in #{dt}ms prices_updated=#{updated_prices} rows_written=#{length(items)}")
+    Logger.info("[job] gw2.sync_sheet — completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{length(items)}")
 
     :ok
   end

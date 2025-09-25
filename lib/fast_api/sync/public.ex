@@ -6,8 +6,14 @@ defmodule FastApi.Sync.Public do
 
   require Logger
 
+  defp fmt_ms(ms) do
+    total = div(ms, 1000)
+    mins = div(total, 60)
+    secs = rem(total, 60)
+    "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
+  end
+
   def execute() do
-    # --- START LINE (1/2) ---
     t0 = System.monotonic_time(:millisecond)
     Logger.info("[job] public.execute — started")
 
@@ -33,13 +39,12 @@ defmodule FastApi.Sync.Public do
           |> Repo.update()
       end
 
-    # --- END LINE (2/2) ---
     dt = System.monotonic_time(:millisecond) - t0
     ok_count =
       [changelog_dt, updates_dt, todos_dt]
       |> Enum.count(&(&1 != ""))
 
-    Logger.info("[job] public.execute — completed in #{dt}ms files=3 resolved=#{ok_count}")
+    Logger.info("[job] public.execute — completed in #{fmt_ms(dt)} files=3 resolved=#{ok_count}")
 
     result
   end
