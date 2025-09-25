@@ -8,9 +8,27 @@ tasks:
   build-prod:
     cmds:
       - task: stop-prod
-      - mix release --overwrite
+      - MIX_ENV=prod mix release --overwrite
+      - task: normalize-release-eol
+      - task: start-prod
     env:
       MIX_ENV: prod
+
+  normalize-release-eol:
+    desc: "Strip CRLF and ensure exec bits on release scripts"
+    cmds:
+      - |
+        set -eu
+        files=(
+          "_build/prod/rel/fast_api/releases/"*/"env.sh"
+          "_build/prod/rel/fast_api/bin/fast_api"
+          "_build/prod/rel/fast_api/bin/"*
+        )
+        for f in "${files[@]}"; do
+          [ -f "$f" ] || continue
+          sed -i 's/\r$//' "$f"
+          chmod +x "$f"
+        done
 
   deps:
     cmds:
