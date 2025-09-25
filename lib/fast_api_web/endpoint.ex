@@ -27,7 +27,7 @@ defmodule FastApiWeb.Endpoint do
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :fast_api
   end
 
-  # Allow CORS during development
+  # Allow CORS during development (kept from legacy)
   plug CORSPlug
 
   plug Plug.RequestId
@@ -41,5 +41,6 @@ defmodule FastApiWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+
   plug FastApiWeb.Router
 end
