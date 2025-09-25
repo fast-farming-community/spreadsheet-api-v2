@@ -4,8 +4,8 @@ defmodule FastApiWeb.Plugs.AutoBan do
   require Logger
 
   @ban_table :fast_ip_banlist
-  @ban_ms 24 * 60 * 60 * 1000   # 24h, tune as needed
-  @allow MapSet.new(~w(127.0.0.1 ::1)) # trusted proxies if needed
+  @ban_ms 24 * 60 * 60 * 1000   # 24h
+  @allow MapSet.new(~w(127.0.0.1 ::1))
   @slug_regex ~r/^[a-z0-9-]+$/
 
   def init(opts), do: opts
@@ -18,7 +18,6 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
     case :ets.lookup(@ban_table, ip) do
       [{^ip, until}] when until > now ->
-        # already banned
         return_forbidden(conn, ip, reason: "banned")
       [{^ip, _expired}] ->
         :ets.delete(@ban_table, ip)
@@ -28,36 +27,57 @@ defmodule FastApiWeb.Plugs.AutoBan do
     end
   end
 
-  # Only ban when feature=salvageable AND key exists AND key is malformed
+  # Ban only if feature=salvageable (path or query) AND key is malformed
   defp maybe_ban_by_request(conn, ip, now) do
-    # parse params safely (works before Plug.Parsers)
     conn = fetch_query_params(conn)
     qs_params = conn.params
-    feature = Map.get(qs_params, "feature", "") |> to_string() |> String.downcase()
-    key = Map.get(qs_params, "key") || Map.get(qs_params, "id") || ""
+    feature_q = Map.get(qs_params, "feature", "") |> to_string() |> String.downcase()
+    key_q = Map.get(qs_params, "key") || Map.get(qs_params, "id")
 
-    if feature == "salvageable" and key != "" and key_malformed?(key) and not MapSet.member?(@allow, ip) do
+    path = conn.request_path || ""
+    down = String.downcase(path <> "?" <> (conn.query_string || ""))
+
+    feature_hit? =
+      feature_q == "salvageable" or
+      String.contains?(down, "/salvageable") or
+      String.contains?(down, "feature=salvageable")
+
+    key_p = key_q || extract_key_from_path(path)
+
+    if feature_hit? and key_p && key_malformed?(key_p) and not MapSet.member?(@allow, ip) do
       :ets.insert(@ban_table, {ip, now + @ban_ms})
-      log_ban(conn, ip, "auto-ban malformed-key", key)
+      log_ban(conn, ip, "auto-ban malformed-key", key_p)
       conn |> send_resp(403, "Forbidden") |> halt()
     else
       conn
     end
   end
 
+  # Pull key from /salvageable/<key> if present
+  defp extract_key_from_path(path) when is_binary(path) do
+    segs = String.split(path, "/", trim: true)
+    idx = Enum.find_index(segs, fn s -> String.downcase(s) == "salvageable" end)
+
+    cond do
+      idx && idx + 1 < length(segs) ->
+        segs |> Enum.at(idx + 1) |> URI.decode()
+      segs != [] ->
+        segs |> List.last() |> URI.decode()
+      true ->
+        nil
+    end
+  end
+  defp extract_key_from_path(_), do: nil
+
   defp key_malformed?(raw_key) when is_binary(raw_key) do
-    k = String.trim(raw_key)
-
-    # common malformed signs:
+    k = raw_key |> URI.decode() |> String.trim()
     has_pct20? = String.contains?(raw_key, "%20")
-    has_space?  = String.contains?(k, " ")
-    not_slug?   = not Regex.match?(@slug_regex, k)
-
+    has_space? = String.contains?(k, " ")
+    not_slug?  = not Regex.match?(@slug_regex, k)
     has_pct20? or has_space? or not_slug?
   end
   defp key_malformed?(_), do: false
 
-  # Race-safe ETS creator
   defp ensure_table_race_safe!() do
     case :ets.whereis(@ban_table) do
       :undefined ->
@@ -73,18 +93,14 @@ defmodule FastApiWeb.Plugs.AutoBan do
   end
 
   defp client_ip(conn) do
-    # Prefer X-Forwarded-For first IP, then X-Real-IP, else remote_ip tuple
     xff = get_req_header(conn, "x-forwarded-for") |> List.first()
-    ip =
-      cond do
-        xff && xff != "" ->
-          xff |> String.split(",", trim: true) |> List.first() |> String.trim()
-        true ->
-          xr = get_req_header(conn, "x-real-ip") |> List.first()
-          if xr && xr != "", do: xr, else: ip_to_string(conn.remote_ip)
-      end
-
-    ip || "-"
+    cond do
+      xff && xff != "" ->
+        xff |> String.split(",", trim: true) |> List.first() |> String.trim()
+      true ->
+        xr = get_req_header(conn, "x-real-ip") |> List.first()
+        if xr && xr != "", do: xr, else: ip_to_string(conn.remote_ip)
+    end
   end
 
   defp ip_to_string(nil), do: "-"
@@ -98,7 +114,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
   defp log_ban(conn, ip, reason, key \\ nil) do
     ua = get_req_header(conn, "user-agent") |> List.first() || "-"
-    key_part = if key, do: ~s| key="#{String.replace(key, ~r/[\r\n"]/, " ")}"|, else: ""
+    key_part = if key, do: ~s| key="#{String.replace(to_string(key), ~r/[\r\n"]/, " ")}"|, else: ""
     Logger.warning(fn ->
       ~s|BOT_AUTOBAN ip=#{ip} reason="#{reason}" method=#{conn.method} path="#{conn.request_path}" qs="#{conn.query_string}"#{key_part} ua="#{safe(ua)}"|
     end)
