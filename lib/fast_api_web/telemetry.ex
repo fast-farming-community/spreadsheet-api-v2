@@ -9,46 +9,65 @@ defmodule FastApiWeb.Telemetry do
   @impl true
   def init(_arg) do
     children = [
+      # emits vm.* metrics
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
+
+      # Prometheus exporter (same module you already use)
       {TelemetryMetricsPrometheus, [metrics: metrics()]}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  # Buckets for request/query durations (milliseconds)
+  @ms_buckets [5, 10, 20, 50, 100, 250, 500, 1_000, 2_000, 5_000]
+
   def metrics do
     [
-      # Phoenix Metrics
-      summary("phoenix.endpoint.stop.duration",
-        unit: {:native, :millisecond}
+      # ------------------------------------
+      # Phoenix Metrics (use histograms)
+      # ------------------------------------
+      distribution("phoenix.endpoint.stop.duration",
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @ms_buckets]
       ),
-      summary("phoenix.router_dispatch.stop.duration",
+      distribution("phoenix.router_dispatch.stop.duration",
         tags: [:route],
-        unit: {:native, :millisecond}
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @ms_buckets]
       ),
 
-      # Database Metrics
-      summary("fast_api.repo.query.total_time",
+      # ------------------------------------
+      # Database Metrics (use histograms)
+      # Ecto emits durations in :native. We convert to ms.
+      # ------------------------------------
+      distribution("fast_api.repo.query.total_time",
         unit: {:native, :millisecond},
-        description: "The sum of the other measurements"
+        description: "The sum of the other measurements",
+        reporter_options: [buckets: @ms_buckets]
       ),
-      summary("fast_api.repo.query.decode_time",
+      distribution("fast_api.repo.query.decode_time",
         unit: {:native, :millisecond},
-        description: "The time spent decoding the data received from the database"
+        description: "The time spent decoding the data received from the database",
+        reporter_options: [buckets: @ms_buckets]
       ),
-      summary("fast_api.repo.query.query_time",
+      distribution("fast_api.repo.query.query_time",
         unit: {:native, :millisecond},
-        description: "The time spent executing the query"
+        description: "The time spent executing the query",
+        reporter_options: [buckets: @ms_buckets]
       ),
-      summary("fast_api.repo.query.queue_time",
+      distribution("fast_api.repo.query.queue_time",
         unit: {:native, :millisecond},
-        description: "The time spent waiting for a database connection"
+        description: "The time spent waiting for a database connection",
+        reporter_options: [buckets: @ms_buckets]
       ),
-      summary("fast_api.repo.query.idle_time",
+      distribution("fast_api.repo.query.idle_time",
         unit: {:native, :millisecond},
-        description:
-          "The time the connection spent waiting before being checked out for the query"
+        description: "The time the connection spent waiting before being checked out for the query",
+        reporter_options: [buckets: @ms_buckets]
       ),
+
+      # feature/detail request counters stay as-is
       counter("fast_api.feature.request.count",
         tags: [:collection],
         description: "The amount of requests made to feature endpoints"
@@ -58,11 +77,13 @@ defmodule FastApiWeb.Telemetry do
         description: "The amount of requests made to detail endpoints"
       ),
 
-      # VM Metrics
-      summary("vm.memory.total", unit: {:byte, :kilobyte}),
-      summary("vm.total_run_queue_lengths.total"),
-      summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
+      # ------------------------------------
+      # VM Metrics (use gauges/last_value)
+      # ------------------------------------
+      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
+      last_value("vm.total_run_queue_lengths.total"),
+      last_value("vm.total_run_queue_lengths.cpu"),
+      last_value("vm.total_run_queue_lengths.io")
     ]
   end
 
