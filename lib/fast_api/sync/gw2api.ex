@@ -181,7 +181,7 @@ defmodule FastApi.Sync.GW2API do
       end
 
     {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
-      Logger.warn("HTTP timeout (#{retry + 1}/5), retrying…")
+      Logger.warning("HTTP timeout (#{retry + 1}/5), retrying…")
       request_json(request, retry + 1)
 
     {:error, error} ->

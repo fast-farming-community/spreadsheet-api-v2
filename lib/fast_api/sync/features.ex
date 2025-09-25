@@ -32,7 +32,7 @@ defmodule FastApi.Sync.Features do
       do_execute(repo)
     catch
       :exit, {:timeout, _} = reason ->
-        Logger.warn("GSheets fetch timeout (#{attempt}/#{@max_retries}); retrying…")
+        Logger.warning("GSheets fetch timeout (#{attempt}/#{@max_retries}); retrying…")
         Process.sleep(:timer.seconds(attempt * 2))
         retry_execute(repo, attempt + 1)
 
