@@ -115,9 +115,7 @@ defmodule FastApi.Sync.Features do
     pid_label  = inspect(self())
     count      = length(tables)
     planned_after = min(idx * @batch_size + count, total_ranges)
-
-    Logger.info("Fetching chunk #{idx + 1}/#{total} pid=#{pid_label} ranges=#{count} progress=#{planned_after}/#{total_ranges}")
-
+    
     Process.sleep(200)
 
     result =
