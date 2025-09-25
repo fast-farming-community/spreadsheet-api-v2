@@ -12,38 +12,6 @@ defmodule FastApi.Sync.GW2API do
   @prices "https://api.guildwars2.com/v2/commerce/prices"
   @step 150
 
-  @spec dailies() :: :ok
-  def dailies do
-    dailies =
-      get_dailies()
-      |> Map.drop(["fractals", "special"])
-      |> Enum.flat_map(fn {type, dailies} ->
-        Enum.map(dailies, fn daily ->
-          [
-            type,
-            daily["id"],
-            daily["level"]["min"],
-            daily["level"]["max"],
-            Enum.join(daily["required_access"], ", ")
-          ]
-        end)
-      end)
-
-    {:ok, token} = Goth.fetch(FastApi.Goth)
-    connection = GoogleApi.Sheets.V4.Connection.new(token.token)
-
-    {:ok, _response} =
-      GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
-        connection,
-        "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho",
-        "DailyAPI!A4:G#{4 + length(dailies)}",
-        body: %{values: dailies},
-        valueInputOption: "RAW"
-      )
-
-    :ok
-  end
-
   # WIP: Cleanup
   @spec sync_items() :: :ok
   def sync_items do
@@ -151,11 +119,6 @@ defmodule FastApi.Sync.GW2API do
       end)
     end)
     |> Enum.map(&keys_to_atoms/1)
-  end
-
-  defp get_dailies do
-    Finch.build(:get, @dailies)
-    |> request_json()
   end
 
   defp get_item_ids do
