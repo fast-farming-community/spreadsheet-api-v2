@@ -45,7 +45,7 @@ config :logger,
   level: :info 
 
 config :logger, :console,
-  format: "$time [$level] $message\n",
+  format: "$time [$level] $message\n"
 #  metadata: [:request_id]
 
 # Silence Phoenix request logs
