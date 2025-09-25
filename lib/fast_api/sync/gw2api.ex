@@ -156,32 +156,40 @@ defmodule FastApi.Sync.GW2API do
   end
   
   defp request_json(request, retry \\ 0) do
-    case Finch.request(request, FastApi.Finch) do
-      {:ok, %Finch.Response{body: body}} ->
-        case Jason.decode(body) do
-          {:ok, decoded} when is_list(decoded) ->
-            decoded
+  case Finch.request(request, FastApi.Finch) do
+    {:ok, %Finch.Response{status: status, body: body}} ->
+      case Jason.decode(body) do
+        {:ok, decoded} when is_list(decoded) ->
+          if status != 200 do
+            Logger.error("HTTP #{status} with list body from remote: #{inspect(Enum.take(decoded, 1))}")
+          end
+          decoded
 
-          {:ok, decoded} when is_map(decoded) ->
-            [decoded]  # wrap map in list for Enum.flat_map
+        {:ok, decoded} when is_map(decoded) ->
+          if status != 200 do
+            Logger.error("HTTP #{status} with map body from remote: #{inspect(decoded)}")
+          end
+          [decoded]  # wrap map in list for Enum.flat_map
 
-          {:ok, other} ->
-            Logger.error("Unexpected response from #{request.path}: #{inspect(other)}")
-            []
+        {:ok, other} ->
+          Logger.error("Unexpected JSON shape (status #{status}): #{inspect(other)}")
+          []
 
-          {:error, error} ->
-            Logger.error("Failed to decode JSON from #{request.path}: #{inspect(error)}")
-            []
-        end
+        {:error, error} ->
+          Logger.error("Failed to decode JSON (status #{status}): #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 400))}")
+          []
+      end
 
-      {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
-        request_json(request, retry + 1)
+    {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
+      Logger.warn("HTTP timeout (#{retry + 1}/5), retrying…")
+      request_json(request, retry + 1)
 
-      {:error, error} ->
-        Logger.error("Error requesting #{request.path}: #{inspect(error)}")
-        []
-    end
+    {:error, error} ->
+      Logger.error("HTTP request error: #{inspect(error)}")
+      []
   end
+end
+
 
   defp keys_to_atoms(map) do
     Enum.into(map, %{}, fn {key, value} -> {String.to_atom(key), value} end)
