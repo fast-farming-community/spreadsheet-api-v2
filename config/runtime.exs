@@ -80,6 +80,10 @@ if config_env() == :prod do
       {"@daily", {FastApi.Sync.Indexer, :execute, []}}
     ]
 
+  config :logger, level: :warn
+  config :phoenix, :logger,
+    Keyword.merge(Application.get_env(:phoenix, :logger, []), level: :warn)
+
   # ## Configuring the mailer
   #
   # In production you need to configure the mailer to use a different adapter.

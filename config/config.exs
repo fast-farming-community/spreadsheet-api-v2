@@ -47,6 +47,11 @@ config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# Silence Phoenix request logs
+config :phoenix, :logger,
+  level: :warn,
+  filter_parameters: ["password", "token", "authorization"]
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
