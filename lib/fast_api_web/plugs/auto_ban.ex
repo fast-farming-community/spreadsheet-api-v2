@@ -43,10 +43,18 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
   defp ensure_tables!() do
     case :ets.whereis(@ban_table) do
-      :undefined ->
-        :ets.new(@ban_table, [:set, :public, :named_table,
-                              read_concurrency: true, write_concurrency: true])
-      _ -> :ok
+        :undefined ->
+        try do
+            :ets.new(@ban_table, [:set, :public, :named_table,
+                                read_concurrency: true, write_concurrency: true])
+        rescue
+            ArgumentError ->
+            # Another process created it between whereis and new
+            :ok
+        end
+
+        _tid ->
+        :ok
     end
   end
 
