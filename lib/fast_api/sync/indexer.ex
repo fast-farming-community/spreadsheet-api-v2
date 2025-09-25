@@ -14,7 +14,7 @@ defmodule FastApi.Sync.Indexer do
 
   def execute() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] indexer.execute — started")
+    Logger.info("[job] indexer.execute started")
 
     index =
       Fast.Feature
@@ -32,7 +32,7 @@ defmodule FastApi.Sync.Indexer do
     |> Repo.update()
 
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] indexer.execute — completed in #{fmt_ms(dt)} indexed=#{length(index)}")
+    Logger.info("[job] indexer.execute completed in #{fmt_ms(dt)} indexed=#{length(index)}")
 
     :ok
   end

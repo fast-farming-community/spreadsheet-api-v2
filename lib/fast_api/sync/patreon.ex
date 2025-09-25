@@ -13,7 +13,7 @@ defmodule FastApi.Sync.Patreon do
 
   def sync_memberships() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] patreon.sync_memberships — started")
+    Logger.info("[job] patreon.sync_memberships started")
 
     {:ok, members} = Client.active_patrons()
 
@@ -28,14 +28,14 @@ defmodule FastApi.Sync.Patreon do
       end)
 
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] patreon.sync_memberships — completed in #{fmt_ms(dt)} refreshed=#{refreshed} total_members=#{length(members)}")
+    Logger.info("[job] patreon.sync_memberships completed in #{fmt_ms(dt)} refreshed=#{refreshed} total_members=#{length(members)}")
 
     :ok
   end
 
   def clear_memberships() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] patreon.clear_memberships — started")
+    Logger.info("[job] patreon.clear_memberships started")
 
     users = Auth.all_users()
     {:ok, members} = Client.active_patrons()
@@ -54,7 +54,7 @@ defmodule FastApi.Sync.Patreon do
       end)
 
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] patreon.clear_memberships — completed in #{fmt_ms(dt)} pruned=#{pruned} updated=#{updated} admins_skipped=#{skipped_admin} users_total=#{length(users)}")
+    Logger.info("[job] patreon.clear_memberships completed in #{fmt_ms(dt)} pruned=#{pruned} updated=#{updated} admins_skipped=#{skipped_admin} users_total=#{length(users)}")
 
     :ok
   end

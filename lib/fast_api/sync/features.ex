@@ -33,13 +33,13 @@ defmodule FastApi.Sync.Features do
   def execute(repo) do
     repo_tag = metadata_name(repo)
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] features.execute(#{repo_tag}) — started")
+    Logger.info("[job] features.execute(#{repo_tag}) started")
 
     try do
       retry_execute(repo, 1)
     after
       dt = System.monotonic_time(:millisecond) - t0
-      Logger.info("[job] features.execute(#{repo_tag}) — completed in #{fmt_ms(dt)}")
+      Logger.info("[job] features.execute(#{repo_tag}) completed in #{fmt_ms(dt)}")
     end
   end
 
