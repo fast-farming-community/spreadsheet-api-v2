@@ -9,6 +9,7 @@ defmodule FastApi.Sync.Features do
 
   @spreadsheet_id "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
   @batch_size 80
+  @max_retries 3
 
   defp concurrency() do
     case System.get_env("GSHEETS_CONCURRENCY") do
@@ -21,7 +22,37 @@ defmodule FastApi.Sync.Features do
     end
   end
 
+  # public entrypoint with retry wrapper
   def execute(repo) do
+    retry_execute(repo, 1)
+  end
+
+  defp retry_execute(repo, attempt) when attempt <= @max_retries do
+    try do
+      do_execute(repo)
+    catch
+      :exit, {:timeout, _} = reason ->
+        Logger.warn("GSheets fetch timeout (#{attempt}/#{@max_retries}); retrying…")
+        Process.sleep(:timer.seconds(attempt * 2))
+        retry_execute(repo, attempt + 1)
+
+      :exit, reason ->
+        # propagate other exits
+        :erlang.raise(:exit, reason, __STACKTRACE__)
+    rescue
+      e in RuntimeError ->
+        # raise normally for business errors
+        reraise e, __STACKTRACE__
+    end
+  end
+
+  defp retry_execute(repo, attempt) when attempt > @max_retries do
+    Logger.error("GSheets fetch timeout after #{@max_retries} attempts; giving up.")
+    do_execute(repo)
+  end
+
+  # --- actual work unchanged below ---
+  defp do_execute(repo) do
     list = Repo.all(repo)
     len  = length(list)
 
@@ -40,7 +71,8 @@ defmodule FastApi.Sync.Features do
         fn chunk -> get_spreadsheet_tables(chunk, total, len, token.token) end,
         max_concurrency: concurrency(),
         timeout: 120_000,
-        ordered: false
+        ordered: false,
+        on_timeout: :kill_task
       )
       |> Enum.flat_map(fn
         {:ok, res} -> res
