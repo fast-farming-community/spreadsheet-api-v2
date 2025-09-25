@@ -56,26 +56,50 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp get_item_details(items) do
-    items
-    |> Enum.chunk_every(@step)
-    |> Enum.flat_map(fn chunk ->
-      req_url = "#{@prices}?ids=#{Enum.map_join(chunk, ",", & &1.id)}"
+   items
+   |> Enum.chunk_every(@step)
+   |> Enum.flat_map(fn chunk ->
+      ids      = Enum.map(chunk, & &1.id)
+      req_url  = "#{@prices}?ids=#{Enum.map_join(chunk, ",", & &1.id)}"
 
-      result = Finch.build(:get, req_url) |> request_json() |> Enum.map(&keys_to_atoms/1)
-      result_ids = Enum.map(result, & &1.id)
+      result =
+       Finch.build(:get, req_url)
+        |> request_json()
+        |> Enum.map(fn
+          %{} = m -> keys_to_atoms(m)
+          other ->
+            Logger.error("GW2 prices API unexpected element (no map) for #{req_url}: #{inspect(other)}")
+            %{}
+        end)
 
-      # TODO: Maybe instead return `nil` for mismatching items and have the DB step
-      # take care of removing mismatching items
-      case Enum.split_with(chunk, fn item -> item.id in result_ids end) do
-        {_, []} ->
-          Enum.zip(chunk, result)
+      # Separate good rows (with :id) from bad rows (missing :id)
+      {good, bad} = Enum.split_with(result, &match?(%{id: _}, &1))
 
-        {matching, mismatching} ->
-          Logger.error("Found mismatching items: #{inspect(mismatching)}")
-          Enum.zip(matching, result)
+      if bad != [] do
+        sample = Enum.take(bad, 3)
+        Logger.error("""
+        GW2 prices API returned #{length(bad)} bad records WITHOUT :id for #{req_url}
+        bad_samples=#{inspect(sample, pretty: true, limit: :infinity, printable_limit: :infinity)}
+        requested_ids=#{inspect(ids)}
+        """)
       end
+
+      # Build a map by id for stable pairing
+      result_by_id = for %{id: id} = m <- good, into: %{}, do: {id, m}
+
+      # Partition requested chunk into matching/missing ids
+      {matching, missing} = Enum.split_with(chunk, fn item -> Map.has_key?(result_by_id, item.id) end)
+
+      if missing != [] do
+        missing_ids = Enum.map(missing, & &1.id)
+        Logger.error("GW2 prices API missing entries for ids=#{inspect(missing_ids)} url=#{req_url}")
+      end
+
+      # Return only pairs that we actually have data for
+      Enum.map(matching, fn item -> {item, Map.fetch!(result_by_id, item.id)} end)
     end)
   end
+
 
   def sync_sheet do
     sync_prices()

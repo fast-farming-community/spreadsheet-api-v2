@@ -17,7 +17,6 @@ defmodule FastApiWeb.DetailController do
     %{"Category" => category} = detail = get_detail(module, collection, item)
 
     if Restrictions.restricted?(detail, claims) do
-      # TODO: better
       conn
       |> Plug.Conn.put_status(:unauthorized)
       |> json(%{error: "Invalid or Expired Access Token"})
@@ -38,7 +37,6 @@ defmodule FastApiWeb.DetailController do
   end
 
   defp get_detail(module, collection, item) do
-    # TODO: Clean this up
     if String.contains?(module, "details") do
       module = String.replace(module, "-details", "")
 

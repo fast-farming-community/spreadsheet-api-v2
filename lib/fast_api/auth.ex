@@ -29,7 +29,6 @@ defmodule FastApi.Auth do
     end
   end
 
-  # TODO: Better error handling?
   def create_user(_) do
     {:error, :invalid_token}
   end
