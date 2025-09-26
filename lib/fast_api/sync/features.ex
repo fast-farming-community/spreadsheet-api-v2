@@ -61,9 +61,9 @@ defmodule FastApi.Sync.Features do
     end
   end
 
-  defp retry_execute(repo, _attempt) do
+  defp retry_execute(_repo, _attempt) do
     Logger.error("GSheets fetch timeout after #{@max_retries} attempts; giving up.")
-    do_execute(repo)
+    do_execute(_repo)
   end
 
   defp do_execute(repo) do
@@ -95,12 +95,35 @@ defmodule FastApi.Sync.Features do
     |> Enum.map(fn {table, changes} -> repo.changeset(table, changes) end)
     |> Enum.each(&Repo.update/1)
 
-    json_data = Jason.encode!(%{updated_at: DateTime.utc_now() |> DateTime.to_iso8601()})
+    updated_at =
+      DateTime.utc_now()
+      |> DateTime.truncate(:millisecond)
+      |> DateTime.to_iso8601()
 
-    Fast.Metadata
-    |> Repo.get_by(name: metadata_name(repo))
-    |> Fast.Metadata.changeset(%{data: json_data})
-    |> Repo.update()
+    data = %{updated_at: updated_at}
+    name = metadata_name(repo)
+
+    case Repo.get_by(Fast.Metadata, name: name) do
+      nil ->
+        %Fast.Metadata{name: name}
+        |> Fast.Metadata.changeset(%{data: data})
+        |> Repo.insert()
+        |> case do
+          {:ok, _} -> :ok
+          {:error, changeset} ->
+            Logger.error("metadata(#{name}) insert failed: #{inspect(changeset.errors)}")
+        end
+
+      %Fast.Metadata{} = row ->
+        row
+        |> Fast.Metadata.changeset(%{data: data})
+        |> Repo.update()
+        |> case do
+          {:ok, _} -> :ok
+          {:error, changeset} ->
+            Logger.error("metadata(#{name}) update failed: #{inspect(changeset.errors)}")
+        end
+    end
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end
@@ -108,7 +131,7 @@ defmodule FastApi.Sync.Features do
   defp get_spreadsheet_tables({tables, idx}, total, _total_ranges, bearer_token) do
     connection = GoogleApi.Sheets.V4.Connection.new(bearer_token)
     pid_label  = inspect(self())
-    
+
     Process.sleep(200)
 
     result =
@@ -123,6 +146,7 @@ defmodule FastApi.Sync.Features do
     case result do
       {:error, error} ->
         Logger.error("Chunk #{idx + 1}/#{total} pid=#{pid_label} API error: #{inspect(error)}")
+      _ -> :ok
     end
 
     result
