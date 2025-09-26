@@ -114,7 +114,6 @@ defmodule FastApiWeb.Plugs.AutoBan do
   end
 
   defp normalize_ip(nil), do: "-"
-  # Normalize IPv6-mapped IPv4 like "::ffff:34.116.22.40" -> "34.116.22.40"
   defp normalize_ip("::ffff:" <> rest), do: rest
   defp normalize_ip(ip), do: ip
 
@@ -123,7 +122,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
   defp ip_to_string(str) when is_binary(str), do: str
 
   # Log only on the first ban insert; repeat banned hits are silent
-  defp log_ban_once(conn, ip, reason, key \\ nil) do
+  defp log_ban_once(conn, ip, reason, key) do
     ua = get_req_header(conn, "user-agent") |> List.first() || "-"
     key_part = if key, do: ~s| key="#{String.replace(to_string(key), ~r/[\r\n"]/, " ")}"|, else: ""
     Logger.warning(fn ->

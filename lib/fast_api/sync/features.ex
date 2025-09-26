@@ -105,10 +105,9 @@ defmodule FastApi.Sync.Features do
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end
 
-  defp get_spreadsheet_tables({tables, idx}, total, total_ranges, bearer_token) do
+  defp get_spreadsheet_tables({tables, idx}, total, _total_ranges, bearer_token) do
     connection = GoogleApi.Sheets.V4.Connection.new(bearer_token)
     pid_label  = inspect(self())
-    count      = length(tables)
     
     Process.sleep(200)
 
@@ -122,9 +121,6 @@ defmodule FastApi.Sync.Features do
       )
 
     case result do
-      {:ok, %{valueRanges: vrs}} ->
-        returned = length(vrs || [])
-
       {:error, error} ->
         Logger.error("Chunk #{idx + 1}/#{total} pid=#{pid_label} API error: #{inspect(error)}")
     end
