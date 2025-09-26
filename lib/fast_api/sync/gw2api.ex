@@ -41,7 +41,6 @@ defmodule FastApi.Sync.GW2API do
   @spec sync_prices() :: {:ok, non_neg_integer}
   def sync_prices do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] gw2.sync_prices started")
 
     updated =
       from(item in Fast.Item,
@@ -115,7 +114,6 @@ defmodule FastApi.Sync.GW2API do
 
   def sync_sheet do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] gw2.sync_sheet started")
 
     {:ok, updated_prices} = sync_prices()
 

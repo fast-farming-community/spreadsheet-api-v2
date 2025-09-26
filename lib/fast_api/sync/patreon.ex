@@ -34,7 +34,6 @@ defmodule FastApi.Sync.Patreon do
 
   def clear_memberships() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] patreon.clear_memberships started")
 
     users = Auth.all_users()
     {:ok, members} = Client.active_patrons()

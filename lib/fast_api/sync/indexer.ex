@@ -14,7 +14,6 @@ defmodule FastApi.Sync.Indexer do
 
   def execute() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] indexer.execute started")
 
     index =
       Fast.Feature

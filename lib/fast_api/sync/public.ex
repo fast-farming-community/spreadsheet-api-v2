@@ -15,7 +15,6 @@ defmodule FastApi.Sync.Public do
 
   def execute() do
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] public.execute started")
 
     changelog_dt = github_file_last_update("CHANGELOG.md")
     updates_dt   = github_file_last_update("WEBSITE_CONTENT_UPDATES.md")

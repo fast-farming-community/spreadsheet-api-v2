@@ -33,7 +33,6 @@ defmodule FastApi.Sync.Features do
   def execute(repo) do
     repo_tag = metadata_name(repo)
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[job] features.execute(#{repo_tag}) started")
 
     try do
       retry_execute(repo, 1)
@@ -71,12 +70,8 @@ defmodule FastApi.Sync.Features do
     list = Repo.all(repo)
     len  = length(list)
 
-    Logger.info("Started fetching #{len} tables from Google Sheets API.")
-
     chunks = list |> Enum.chunk_every(@batch_size) |> Enum.with_index()
     total  = length(chunks)
-
-    Logger.info("GSheets fetch: batch_size=#{@batch_size}, concurrency=#{concurrency()}, chunks=#{total}, total_ranges=#{len}")
 
     {:ok, token} = Goth.fetch(FastApi.Goth)
 
@@ -114,7 +109,6 @@ defmodule FastApi.Sync.Features do
     connection = GoogleApi.Sheets.V4.Connection.new(bearer_token)
     pid_label  = inspect(self())
     count      = length(tables)
-    planned_after = min(idx * @batch_size + count, total_ranges)
     
     Process.sleep(200)
 
@@ -130,8 +124,6 @@ defmodule FastApi.Sync.Features do
     case result do
       {:ok, %{valueRanges: vrs}} ->
         returned = length(vrs || [])
-        planned_after = min(idx * @batch_size + returned, total_ranges)
-        Logger.info("Fetched chunk #{idx + 1}/#{total} pid=#{pid_label} progress=#{planned_after}/#{total_ranges}")
 
       {:error, error} ->
         Logger.error("Chunk #{idx + 1}/#{total} pid=#{pid_label} API error: #{inspect(error)}")
