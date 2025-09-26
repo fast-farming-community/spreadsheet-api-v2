@@ -95,18 +95,19 @@ defmodule FastApi.Sync.Features do
     |> Enum.map(fn {table, changes} -> repo.changeset(table, changes) end)
     |> Enum.each(&Repo.update/1)
 
+    # --- minimal legacy-safe fix: store a STRING in metadata.data ---
     updated_at =
       DateTime.utc_now()
       |> DateTime.truncate(:millisecond)
       |> DateTime.to_iso8601()
 
-    data = %{updated_at: updated_at}
+    json_data = Jason.encode!(%{updated_at: updated_at})
     name = metadata_name(repo)
 
     case Repo.get_by(Fast.Metadata, name: name) do
       nil ->
         %Fast.Metadata{name: name}
-        |> Fast.Metadata.changeset(%{data: data})
+        |> Fast.Metadata.changeset(%{data: json_data})
         |> Repo.insert()
         |> case do
           {:ok, _} -> :ok
@@ -116,7 +117,7 @@ defmodule FastApi.Sync.Features do
 
       %Fast.Metadata{} = row ->
         row
-        |> Fast.Metadata.changeset(%{data: data})
+        |> Fast.Metadata.changeset(%{data: json_data})
         |> Repo.update()
         |> case do
           {:ok, _} -> :ok
@@ -124,6 +125,7 @@ defmodule FastApi.Sync.Features do
             Logger.error("metadata(#{name}) update failed: #{inspect(changeset.errors)}")
         end
     end
+    # ---------------------------------------------------------------
 
     Logger.info("Finished fetching #{len} tables from Google Sheets API.")
   end
