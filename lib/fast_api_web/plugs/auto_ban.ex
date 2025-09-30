@@ -1,7 +1,6 @@
 defmodule FastApiWeb.Plugs.AutoBan do
   @moduledoc false
   import Plug.Conn
-  require Logger
 
   @ban_table :fast_ip_banlist
   @ban_ms 24 * 60 * 60 * 1000   # 24h
@@ -20,7 +19,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
     case :ets.lookup(@ban_table, ip) do
       [{^ip, until}] when until > now ->
-        # already banned → block quietly with 403 (no extra logs)
+        # already banned → block quietly with 403
         conn |> send_resp(403, "Forbidden") |> halt()
 
       [{^ip, _expired}] ->
@@ -52,8 +51,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
     if feature_hit? and key_p && key_malformed?(key_p) and not MapSet.member?(@allow, ip) do
       # Atomic insert: only the very first request for this IP will succeed
       if :ets.insert_new(@ban_table, {ip, now + @ban_ms}) do
-        # First offender → log once and send 410 Gone
-        log_ban_once(conn, ip, "auto-ban malformed-key", key_p)
+        # First offender → send 410 Gone
         conn |> send_resp(410, "Gone") |> halt()
       else
         # Another concurrent request already banned it → silent 403
@@ -120,16 +118,4 @@ defmodule FastApiWeb.Plugs.AutoBan do
   defp ip_to_string(nil), do: "-"
   defp ip_to_string(tuple) when is_tuple(tuple), do: :inet.ntoa(tuple) |> to_string()
   defp ip_to_string(str) when is_binary(str), do: str
-
-  # Log only on the first ban insert; repeat banned hits are silent
-  defp log_ban_once(conn, ip, reason, key) do
-    ua = get_req_header(conn, "user-agent") |> List.first() || "-"
-    key_part = if key, do: ~s| key="#{String.replace(to_string(key), ~r/[\r\n"]/, " ")}"|, else: ""
-    Logger.warning(fn ->
-      ~s|BOT_AUTOBAN ip=#{ip} reason="#{reason}" method=#{conn.method} path="#{conn.request_path}" qs="#{conn.query_string}"#{key_part} ua="#{safe(ua)}"|
-    end)
-  end
-
-  defp safe(nil), do: "-"
-  defp safe(s),  do: String.replace(s, ~r/[\r\n"]/, " ")
 end
