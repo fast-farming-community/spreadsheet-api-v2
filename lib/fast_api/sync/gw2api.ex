@@ -10,7 +10,7 @@ defmodule FastApi.Sync.GW2API do
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
   @step 150
-  @concurrency System.schedulers_online() * 2
+  @concurrency System.schedulers_online() * 4
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
