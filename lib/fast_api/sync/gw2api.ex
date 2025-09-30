@@ -78,7 +78,13 @@ defmodule FastApi.Sync.GW2API do
         |> Enum.reduce(0, fn batch, acc ->
           now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-          rows = Enum.map(batch, &Map.put(&1, :updated_at, now))
+          # IMPORTANT: set both timestamps for rows we might INSERT
+          rows =
+            Enum.map(batch, fn row ->
+              row
+              |> Map.put_new(:inserted_at, now)
+              |> Map.put(:updated_at, now)
+            end)
 
           {count, _} =
             Repo.insert_all(
