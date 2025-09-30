@@ -52,13 +52,14 @@ defmodule FastApi.Sync.GW2API do
   def sync_prices do
     t0 = System.monotonic_time(:millisecond)
 
-    # Load full struct so we can read flags to decide if account-bound
+    # Only need id + vendor_value from DB
     items =
       Fast.Item
       |> where([i], i.tradable == true)
-      |> select([i], i)
+      |> select([i], %{id: i.id, vendor_value: i.vendor_value})
       |> Repo.all()
 
+    # Fetch prices + flags per chunk (flags come from /v2/items)
     pairs =
       items
       |> Enum.chunk_every(@step)
@@ -76,8 +77,10 @@ defmodule FastApi.Sync.GW2API do
     rows =
       pairs
       |> Enum.map(fn
-        {%Fast.Item{id: id, vendor_value: vendor, flags: flags} = _item,
-         %{"buys" => buys, "sells" => sells}} ->
+        {%{id: id, vendor_value: vendor},
+         %{"buys" => buys, "sells" => sells} = m} ->
+          flags = Map.get(m, "flags", [])
+
           if accountbound?(flags) do
             # Account-bound: do NOT use TP prices
             %{id: id, buy: vendor || 0, sell: 0}
@@ -103,7 +106,7 @@ defmodule FastApi.Sync.GW2API do
         batch_with_ts =
           Enum.map(batch, fn row ->
             row
-            |> Map.put_new(:inserted_at, now) # if a new row slips in
+            |> Map.put_new(:inserted_at, now) # in case a new row appears
             |> Map.put(:updated_at, now)
           end)
 
@@ -124,23 +127,38 @@ defmodule FastApi.Sync.GW2API do
     {:ok, updated}
   end
 
-  # Helper: fetch price maps for a chunk and align them with items by id
+  # Fetch price maps for a chunk AND attach flags from /v2/items
+  # Returns [{item, %{"buys" => ..., "sells" => ..., "flags" => [...]}}]
   defp fetch_prices_for_chunk(chunk) do
     ids = Enum.map(chunk, & &1.id)
-    req_url = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
-    Finch.build(:get, req_url)
-    |> request_json()
-    |> then(fn result ->
-      by_id =
-        result
-        |> Enum.filter(&match?(%{"id" => _}, &1))
-        |> Map.new(&{&1["id"], &1})
+    req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
+    req_items  = "#{@items}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
-      for %{id: id} = item <- chunk, Map.has_key?(by_id, id) do
-        {item, Map.fetch!(by_id, id)}
-      end
-    end)
+    prices =
+      Finch.build(:get, req_prices)
+      |> request_json()
+
+    items =
+      Finch.build(:get, req_items)
+      |> request_json()
+
+    prices_by_id =
+      prices
+      |> Enum.filter(&match?(%{"id" => _}, &1))
+      |> Map.new(&{&1["id"], &1})
+
+    flags_by_id =
+      items
+      |> Enum.filter(&match?(%{"id" => _}, &1))
+      |> Map.new(&{&1["id"], Map.get(&1, "flags", [])})
+
+    for item <- chunk,
+        price = Map.get(prices_by_id, item.id),
+        not is_nil(price) do
+      merged = Map.put(price, "flags", Map.get(flags_by_id, item.id, []))
+      {item, merged}
+    end
   end
 
   def sync_sheet do
@@ -252,7 +270,7 @@ defmodule FastApi.Sync.GW2API do
     |> then(&struct(Fast.Item, &1))
   end
 
-  # Only treat "AccountBound" as bound (per your GW2 API sample)
+  # Only treat "AccountBound" as bound (per your sample)
   defp accountbound?(flags) when is_list(flags) do
     Enum.any?(flags, &(&1 == "AccountBound"))
   end
