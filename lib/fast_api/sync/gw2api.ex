@@ -10,7 +10,7 @@ defmodule FastApi.Sync.GW2API do
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
   @step 150
-  @concurrency System.schedulers_online() * 4
+  @concurrency System.schedulers_online() * 2
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
@@ -43,59 +43,62 @@ defmodule FastApi.Sync.GW2API do
   def sync_prices do
     t0 = System.monotonic_time(:millisecond)
 
+    items =
+      Fast.Item
+      |> where([i], i.tradable == true)
+      |> select([i], %{id: i.id, vendor_value: i.vendor_value})
+      |> Repo.all()
+
+    pairs =
+      items
+      |> Enum.chunk_every(@step)
+      |> Task.async_stream(&fetch_prices_for_chunk/1,
+        max_concurrency: @concurrency,
+        timeout: 30_000
+      )
+      |> Enum.flat_map(fn
+        {:ok, pairs} -> pairs
+        {:exit, reason} ->
+          Logger.error("concurrent fetch failed: #{inspect(reason)}")
+          []
+      end)
+
+    rows =
+      pairs
+      |> Enum.map(fn
+        {%{id: id, vendor_value: vendor}, %{"buys" => buys, "sells" => sells}} ->
+          buy0  = buys  && Map.get(buys,  "unit_price")
+          sell0 = sells && Map.get(sells, "unit_price")
+          buy   = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy0
+          sell  = if is_nil(sell0), do: 0, else: sell0
+          %{id: id, buy: buy, sell: sell}
+        _ ->
+          nil
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
     updated =
-      Repo.transaction(fn ->
-        # Load small projection into memory (safe for ~30k rows)
-        items =
-          Fast.Item
-          |> where([i], i.tradable == true)
-          |> select([i], %{id: i.id, vendor_value: i.vendor_value})
-          |> Repo.all()
+      rows
+      |> Enum.chunk_every(5_000)
+      |> Enum.reduce(0, fn batch, acc ->
+        batch_with_ts =
+          Enum.map(batch, fn row ->
+            row
+            |> Map.put_new(:inserted_at, now) # for the rare case a new row appears
+            |> Map.put(:updated_at, now)
+          end)
 
-        items
-        |> Enum.chunk_every(@step)
-        |> Task.async_stream(&fetch_prices_for_chunk/1,
-          max_concurrency: @concurrency,
-          timeout: 30_000
-        )
-        |> Stream.flat_map(fn
-          {:ok, pairs} -> pairs
-          {:exit, reason} ->
-            Logger.error("concurrent fetch failed: #{inspect(reason)}")
-            []
-        end)
-        |> Stream.map(fn
-          {%{id: id, vendor_value: vendor}, %{"buys" => buys, "sells" => sells}} ->
-            buy0  = buys  && Map.get(buys,  "unit_price")
-            sell0 = sells && Map.get(sells, "unit_price")
-            buy   = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy0
-            sell  = if is_nil(sell0), do: 0, else: sell0
-            %{id: id, buy: buy, sell: sell}
-          _ ->
-            nil
-        end)
-        |> Stream.reject(&is_nil/1)
-        |> Stream.chunk_every(5_000)
-        |> Enum.reduce(0, fn batch, acc ->
-          now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+        {count, _} =
+          Repo.insert_all(
+            Fast.Item,
+            batch_with_ts,
+            on_conflict: {:replace, [:buy, :sell, :updated_at]},
+            conflict_target: [:id]
+          )
 
-          rows =
-            Enum.map(batch, fn row ->
-              row
-              |> Map.put_new(:inserted_at, now) # needed if a new row slips in
-              |> Map.put(:updated_at, now)
-            end)
-
-          {count, _} =
-            Repo.insert_all(
-              Fast.Item,
-              rows,
-              on_conflict: {:replace, [:buy, :sell, :updated_at]},
-              conflict_target: [:id]
-            )
-
-          acc + count
-        end)
+        acc + count
       end)
 
     dt = System.monotonic_time(:millisecond) - t0
