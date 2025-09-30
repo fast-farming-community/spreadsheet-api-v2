@@ -72,18 +72,14 @@ defmodule FastApi.Sync.GW2API do
       |> select([i], %{id: i.id, vendor_value: i.vendor_value, buy_old: i.buy, sell_old: i.sell})
       |> Repo.all()
 
-    ids = Enum.map(items, & &1.id)
-
-    ensure_flags_cache!()
-    flags_by_id = get_flags_for_ids(ids)
-
     pairs =
       items
       |> Enum.chunk_every(@step)
-      |> Task.async_stream(&fetch_prices_for_chunk_with_retry(&1, flags_by_id),
+      |> Task.async_stream(&fetch_prices_for_chunk_with_retry/1,
         max_concurrency: @concurrency,
         timeout: 30_000,
-        on_timeout: :kill_task
+        on_timeout: :kill_task,
+        ordered: false
       )
       |> Enum.flat_map(fn
         {:ok, pairs} -> pairs
@@ -148,7 +144,6 @@ defmodule FastApi.Sync.GW2API do
       end)
 
     dt = mono_ms() - t0
-    Logger.info("[job] gw2.sync_prices completed in #{fmt_ms(dt)} updated=#{updated} zeroed_bound_no_vendor=#{zeroed_bound_no_vendor}")
 
     {:ok, %{updated: updated, changed_ids: changed_ids}}
   end
@@ -239,7 +234,8 @@ defmodule FastApi.Sync.GW2API do
       fn chunk -> get_details_chunk_with_retry(chunk, base_url) end,
       max_concurrency: @concurrency,
       timeout: 30_000,
-      on_timeout: :kill_task
+      on_timeout: :kill_task,
+      ordered: false
     )
     |> Enum.flat_map(fn
       {:ok, list} -> list
@@ -332,8 +328,36 @@ defmodule FastApi.Sync.GW2API do
     end)
   end
 
-  defp fetch_prices_for_chunk(chunk, flags_by_id) do
+  defp fetch_prices_for_chunk(chunk) do
+    ensure_flags_cache!()
+    now = mono_ms()
     ids = Enum.map(chunk, & &1.id)
+
+    {hits, misses} =
+      Enum.split_with(ids, fn id ->
+        case :ets.lookup(@flags_cache_table, id) do
+          [{^id, _flags, ts}] when now - ts < @flags_cache_ttl_ms -> true
+          _ -> false
+        end
+      end)
+
+    if misses != [] do
+      result = get_details_chunk_with_retry(misses, @items)
+      Enum.each(result, fn %{"id" => id, "flags" => flags} ->
+        :ets.insert(@flags_cache_table, {id, flags || [], now})
+      end)
+    end
+
+    flags_by_id =
+      ids
+      |> Enum.map(fn id ->
+        case :ets.lookup(@flags_cache_table, id) do
+          [{^id, flags, _ts}] -> {id, flags}
+          _ -> {id, []}
+        end
+      end)
+      |> Map.new()
+
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
     prices =
@@ -353,14 +377,14 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
-  defp fetch_prices_for_chunk_with_retry(chunk, flags_by_id, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
+  defp fetch_prices_for_chunk_with_retry(chunk, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
     :timer.sleep(:rand.uniform(300))
     try do
-      res = fetch_prices_for_chunk(chunk, flags_by_id)
+      res = fetch_prices_for_chunk(chunk)
       cond do
         res == [] and attempts > 1 ->
           :timer.sleep(backoff)
-          fetch_prices_for_chunk_with_retry(chunk, flags_by_id, attempts - 1, backoff * 2)
+          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         res == [] ->
           Logger.error("prices empty after retries ids=#{Enum.map(chunk, & &1.id)}")
           []
@@ -372,7 +396,7 @@ defmodule FastApi.Sync.GW2API do
         if attempts > 1 do
           Logger.warning("prices error=#{Exception.message(e)}; retrying in #{backoff}ms")
           :timer.sleep(backoff)
-          fetch_prices_for_chunk_with_retry(chunk, flags_by_id, attempts - 1, backoff * 2)
+          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
           Logger.error("prices error (final): #{Exception.message(e)} ids=#{Enum.map(chunk, & &1.id)}")
           []
@@ -382,7 +406,7 @@ defmodule FastApi.Sync.GW2API do
         if attempts > 1 do
           Logger.warning("prices exit=#{inspect(reason)}; retrying in #{backoff}ms")
           :timer.sleep(backoff)
-          fetch_prices_for_chunk_with_retry(chunk, flags_by_id, attempts - 1, backoff * 2)
+          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
           Logger.error("prices failed after retries: #{inspect(reason)} ids=#{Enum.map(chunk, & &1.id)}")
           []
@@ -434,40 +458,5 @@ defmodule FastApi.Sync.GW2API do
           []
         end
     end
-  end
-
-  defp get_flags_for_ids(ids) do
-    now = mono_ms()
-    ensure_flags_cache!()
-
-    missing =
-      ids
-      |> Enum.reject(fn id ->
-        case :ets.lookup(@flags_cache_table, id) do
-          [{^id, _flags, ts}] when now - ts < @flags_cache_ttl_ms -> true
-          _ -> false
-        end
-      end)
-
-    if missing != [] do
-      fetched =
-        missing
-        |> get_details(@items)
-        |> Enum.filter(&match?(%{id: _}, &1))
-        |> Enum.map(fn %{id: id, flags: flags} -> {id, flags || []} end)
-
-      Enum.each(fetched, fn {id, flags} ->
-        :ets.insert(@flags_cache_table, {id, flags, now})
-      end)
-    end
-
-    ids
-    |> Enum.map(fn id ->
-      case :ets.lookup(@flags_cache_table, id) do
-        [{^id, flags, _ts}] -> {id, flags}
-        _ -> {id, []}
-      end
-    end)
-    |> Map.new()
   end
 end
