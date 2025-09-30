@@ -1,6 +1,6 @@
 defmodule FastApi.Sync.GW2API do
   @moduledoc "Synchronize the spreadsheet using GW2 API data."
-  import Ecto.Query, only: [from: 2, where: 3, select: 3, order_by: 3]
+  import Ecto.Query, only: [where: 3, select: 3, order_by: 3]
 
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
@@ -307,16 +307,6 @@ defmodule FastApi.Sync.GW2API do
         true ->
           res
       end
-    catch
-      :exit, reason ->
-        if attempts > 1 do
-          Logger.warning("prices exit=#{inspect(reason)}; retrying in #{backoff}ms")
-          :timer.sleep(backoff)
-          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
-        else
-          Logger.error("prices failed after retries: #{inspect(reason)} ids=#{Enum.map(chunk, & &1.id)}")
-          []
-        end
     rescue
       e ->
         if attempts > 1 do
@@ -325,6 +315,16 @@ defmodule FastApi.Sync.GW2API do
           fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
           Logger.error("prices error (final): #{Exception.message(e)} ids=#{Enum.map(chunk, & &1.id)}")
+          []
+        end
+    catch
+      :exit, reason ->
+        if attempts > 1 do
+          Logger.warning("prices exit=#{inspect(reason)}; retrying in #{backoff}ms")
+          :timer.sleep(backoff)
+          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
+        else
+          Logger.error("prices failed after retries: #{inspect(reason)} ids=#{Enum.map(chunk, & &1.id)}")
           []
         end
     end
@@ -353,16 +353,6 @@ defmodule FastApi.Sync.GW2API do
         true ->
           result
       end
-    catch
-      :exit, reason ->
-        if attempts > 1 do
-          Logger.warning("items exit=#{inspect(reason)}; retrying in #{backoff}ms url=#{req_url}")
-          :timer.sleep(backoff)
-          get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
-        else
-          Logger.error("items failed after retries url=#{req_url} reason=#{inspect(reason)}")
-          []
-        end
     rescue
       e ->
         if attempts > 1 do
@@ -371,6 +361,16 @@ defmodule FastApi.Sync.GW2API do
           get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
         else
           Logger.error("items error (final) url=#{req_url} error=#{Exception.message(e)}")
+          []
+        end
+    catch
+      :exit, reason ->
+        if attempts > 1 do
+          Logger.warning("items exit=#{inspect(reason)}; retrying in #{backoff}ms url=#{req_url}")
+          :timer.sleep(backoff)
+          get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
+        else
+          Logger.error("items failed after retries url=#{req_url} reason=#{inspect(reason)}")
           []
         end
     end
