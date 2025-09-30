@@ -261,12 +261,12 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp get_item_ids do
-    Finch.build(:get, @items, [{"accept-encoding", "gzip"}])
+    Finch.build(:get, @items)
     |> request_json()
   end
 
   defp get_commerce_item_ids do
-    Finch.build(:get, @prices, [{"accept-encoding", "gzip"}])
+    Finch.build(:get, @prices)
     |> request_json()
   end
 
@@ -347,7 +347,7 @@ defmodule FastApi.Sync.GW2API do
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
     prices =
-      Finch.build(:get, req_prices, [{"accept-encoding", "gzip"}])
+      Finch.build(:get, req_prices)
       |> request_json()
 
     prices_by_id =
@@ -405,7 +405,7 @@ defmodule FastApi.Sync.GW2API do
     req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
     try do
       result =
-        Finch.build(:get, req_url, [{"accept-encoding", "gzip"}])
+        Finch.build(:get, req_url)
         |> request_json()
 
       if length(result) != length(chunk) do
