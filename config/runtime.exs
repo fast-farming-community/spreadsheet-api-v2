@@ -68,17 +68,9 @@ if config_env() == :prod do
     socket_options: maybe_ipv6
 
   config :fast_api, FastApi.Scheduler,
-      jobs: [
-        %{
-        schedule: "*/5 * * * *",
-        task: {FastApi.Sync.GW2API, :sync_sheet, []},
-        overlap: false
-      },
-      %{
-        schedule: "30 0,12 * * *",
-        task: {FastApi.Sync.GW2API, :sync_items, []},
-        overlap: false
-      },
+    jobs: [
+      {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
+      {"@daily", {FastApi.Sync.GW2API, :sync_items, []}}, 
       {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
       {"1 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
