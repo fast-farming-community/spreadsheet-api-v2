@@ -18,8 +18,37 @@ defmodule FastApi.Sync.GW2API do
 
   defp ensure_flags_cache! do
     case :ets.info(@flags_cache_table) do
-      :undefined -> :ets.new(@flags_cache_table, [:named_table, :set, :public, read_concurrency: true])
-      _ -> :ok
+      :undefined ->
+        try do
+          :ets.new(@flags_cache_table, [:named_table, :set, :public, read_concurrency: true])
+        catch
+          :error, :badarg -> :ok
+        end
+
+      _ ->
+        :ok
+    end
+
+    :ok
+  end
+
+  defp flags_lookup(id) do
+    case :ets.info(@flags_cache_table) do
+      :undefined ->
+        nil
+
+      _ ->
+        case :ets.lookup(@flags_cache_table, id) do
+          [{^id, flags, ts}] -> {flags, ts}
+          _ -> nil
+        end
+    end
+  end
+
+  defp flags_insert(id, flags, ts) do
+    case :ets.info(@flags_cache_table) do
+      :undefined -> :ok
+      _ -> :ets.insert(@flags_cache_table, {id, flags, ts})
     end
   end
 
@@ -65,6 +94,7 @@ defmodule FastApi.Sync.GW2API do
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
     t0 = mono_ms()
+    ensure_flags_cache!()
 
     items =
       Fast.Item
@@ -329,14 +359,14 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp fetch_prices_for_chunk(chunk) do
-    ensure_flags_cache!()
     now = mono_ms()
     ids = Enum.map(chunk, & &1.id)
 
-    {hits, misses} =
-      Enum.split_with(ids, fn id ->
-        case :ets.lookup(@flags_cache_table, id) do
-          [{^id, _flags, ts}] when now - ts < @flags_cache_ttl_ms -> true
+    misses =
+      ids
+      |> Enum.reject(fn id ->
+        case flags_lookup(id) do
+          {_, ts} -> now - ts < @flags_cache_ttl_ms
           _ -> false
         end
       end)
@@ -344,15 +374,15 @@ defmodule FastApi.Sync.GW2API do
     if misses != [] do
       result = get_details_chunk_with_retry(misses, @items)
       Enum.each(result, fn %{"id" => id, "flags" => flags} ->
-        :ets.insert(@flags_cache_table, {id, flags || [], now})
+        flags_insert(id, flags || [], now)
       end)
     end
 
     flags_by_id =
       ids
       |> Enum.map(fn id ->
-        case :ets.lookup(@flags_cache_table, id) do
-          [{^id, flags, _ts}] -> {id, flags}
+        case flags_lookup(id) do
+          {flags, _ts} -> {id, flags}
           _ -> {id, []}
         end
       end)
