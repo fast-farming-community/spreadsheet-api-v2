@@ -15,11 +15,10 @@ defmodule FastApi.Patreon.Client do
     |> then(fn
       {:ok, result} ->
         patrons = Enum.flat_map(result.data, &build_patron/1)
-
         active_patrons(result, patrons)
 
       {:error, error} = e ->
-        Logger.error("Error while querying Patreon: #{error}")
+        Logger.error("Error while querying Patreon: #{inspect(error)}")
         e
     end)
   end
@@ -39,7 +38,7 @@ defmodule FastApi.Patreon.Client do
         {:ok, Jason.decode!(body, keys: :atoms)}
 
       {:error, error} = e ->
-        Logger.error("Error while querying Patreon: #{error}")
+        Logger.error("Error while querying Patreon: #{inspect(error)}")
         e
     end)
   end
