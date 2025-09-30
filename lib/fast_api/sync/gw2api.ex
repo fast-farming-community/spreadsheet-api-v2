@@ -1,6 +1,6 @@
 defmodule FastApi.Sync.GW2API do
   @moduledoc "Synchronize the spreadsheet using GW2 API data."
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [from: 2, where: 3, select: 3, order_by: 3]
 
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
@@ -10,6 +10,7 @@ defmodule FastApi.Sync.GW2API do
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
   @step 150
+  @concurrency System.schedulers_online() * 4
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
@@ -43,26 +44,44 @@ defmodule FastApi.Sync.GW2API do
     t0 = System.monotonic_time(:millisecond)
 
     updated =
-      from(item in Fast.Item,
-        where: item.tradable == true,
-        select: item
-      )
-      |> Repo.all()
-      |> get_item_details()
-      |> Enum.reduce(0, fn
-        {%Fast.Item{id: id, vendor_value: vendor_value} = item,
-         %{id: id, buys: %{"unit_price" => buy} = buys} = changes},
-         acc ->
-          buy = if is_nil(buy) or buy == 0, do: vendor_value, else: buy
+      Repo.transaction(fn ->
+        Fast.Item
+        |> where([i], i.tradable == true)
+        |> select([i], %{id: i.id, vendor_value: i.vendor_value})
+        |> Repo.stream()
+        |> Stream.chunk_every(@step)
+        |> Task.async_stream(&get_item_details_from_ids/1,
+          max_concurrency: @concurrency,
+          timeout: 30_000
+        )
+        |> Stream.flat_map(fn
+          {:ok, pairs} -> pairs
+          {:exit, reason} ->
+            Logger.error("concurrent fetch failed: #{inspect(reason)}")
+            []
+        end)
+        |> Stream.map(fn
+          {%{id: id, vendor_value: vendor}, %{id: id, buys: buys}} ->
+            buy0 = Map.get(buys, "unit_price")
+            buy = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy
+            %{id: id, buys: Map.put(buys, "unit_price", buy)}
 
-          item
-          |> Fast.Item.changeset(%{changes | buys: %{buys | "unit_price" => buy}})
-          |> Repo.update()
+          _ ->
+            nil
+        end)
+        |> Stream.reject(&is_nil/1)
+        |> Stream.chunk_every(5_000)
+        |> Enum.reduce(0, fn batch, acc ->
+          {count, _} =
+            Repo.insert_all(
+              Fast.Item,
+              batch,
+              on_conflict: [set: [buys: fragment("EXCLUDED.buys"), updated_at: fragment("now()")]],
+              conflict_target: [:id]
+            )
 
-          acc + 1
-
-        {_item, _changes}, acc ->
-          acc
+          acc + count
+        end)
       end)
 
     dt = System.monotonic_time(:millisecond) - t0
@@ -71,44 +90,19 @@ defmodule FastApi.Sync.GW2API do
     {:ok, updated}
   end
 
-  defp get_item_details(items) do
-    items
-    |> Enum.chunk_every(@step)
-    |> Enum.flat_map(fn chunk ->
-      ids      = Enum.map(chunk, & &1.id)
-      req_url  = "#{@prices}?ids=#{Enum.map_join(chunk, ",", & &1.id)}"
+  defp get_item_details_from_ids(chunk) do
+    ids = Enum.map(chunk, & &1.id)
+    req_url = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
-      result =
-        Finch.build(:get, req_url)
-        |> request_json()
-        |> Enum.map(fn
-          %{} = m -> keys_to_atoms(m)
-          other ->
-            Logger.error("GW2 prices API unexpected element (no map) for #{req_url}: #{inspect(other)}")
-            %{}
-        end)
+    Finch.build(:get, req_url)
+    |> request_json()
+    |> Enum.map(&prices_to_atoms_safe/1)
+    |> then(fn result ->
+      result_by_id = Map.new(Enum.filter(result, &match?(%{id: _}, &1)), &{&1.id, &1})
 
-      {good, bad} = Enum.split_with(result, &match?(%{id: _}, &1))
-
-      if bad != [] do
-        sample = Enum.take(bad, 3)
-        Logger.error("""
-        GW2 prices API returned #{length(bad)} bad records WITHOUT :id for #{req_url}
-        bad_samples=#{inspect(sample, pretty: true, limit: :infinity, printable_limit: :infinity)}
-        requested_ids=#{inspect(ids)}
-        """)
+      for %{id: id} = item <- chunk, Map.has_key?(result_by_id, id) do
+        {item, Map.fetch!(result_by_id, id)}
       end
-
-      result_by_id = for %{id: id} = m <- good, into: %{}, do: {id, m}
-
-      {matching, missing} = Enum.split_with(chunk, fn item -> Map.has_key?(result_by_id, item.id) end)
-
-      if missing != [] do
-        missing_ids = Enum.map(missing, & &1.id)
-        Logger.error("GW2 prices API missing entries for ids=#{inspect(missing_ids)} url=#{req_url}")
-      end
-
-      Enum.map(matching, fn item -> {item, Map.fetch!(result_by_id, item.id)} end)
     end)
   end
 
@@ -119,11 +113,9 @@ defmodule FastApi.Sync.GW2API do
 
     items =
       Fast.Item
+      |> select([i], [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value])
+      |> order_by([i], asc: i.id)
       |> Repo.all()
-      |> Enum.map(fn %Fast.Item{} = item ->
-        [item.id, item.name, item.buy, item.sell, item.icon, item.rarity, item.vendor_value]
-      end)
-      |> Enum.sort_by(&List.first/1)
 
     {:ok, token} = Goth.fetch(FastApi.Goth)
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
@@ -177,25 +169,10 @@ defmodule FastApi.Sync.GW2API do
     case Finch.request(request, FastApi.Finch) do
       {:ok, %Finch.Response{status: status, body: body}} ->
         case Jason.decode(body) do
-          {:ok, decoded} when is_list(decoded) ->
-            if status != 200 do
-              Logger.error("HTTP #{status} with list body from remote: #{inspect(Enum.take(decoded, 1))}")
-            end
-            decoded
-
-          {:ok, decoded} when is_map(decoded) ->
-            if status != 200 do
-              Logger.error("HTTP #{status} with map body from remote: #{inspect(decoded)}")
-            end
-            [decoded]
-
-          {:ok, other} ->
-            Logger.error("Unexpected JSON shape (status #{status}): #{inspect(other)}")
-            []
-
-          {:error, error} ->
-            Logger.error("Failed to decode JSON (status #{status}): #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 400))}")
-            []
+          {:ok, decoded} when is_list(decoded) -> decoded
+          {:ok, decoded} when is_map(decoded) -> [decoded]
+          {:ok, _other} -> []
+          {:error, _error} -> []
         end
 
       {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
@@ -206,6 +183,17 @@ defmodule FastApi.Sync.GW2API do
         []
     end
   end
+
+  # safe fixed atomization for prices API records
+  defp prices_to_atoms_safe(%{"id" => id} = m) do
+    %{
+      id: id,
+      buys: m["buys"],
+      sells: m["sells"]
+    }
+  end
+
+  defp prices_to_atoms_safe(_), do: %{}
 
   defp keys_to_atoms(map) do
     Enum.into(map, %{}, fn {key, value} -> {String.to_atom(key), value} end)
