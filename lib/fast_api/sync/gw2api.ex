@@ -74,28 +74,36 @@ defmodule FastApi.Sync.GW2API do
           []
       end)
 
-    rows =
+    # Build rows; if AccountBound and no vendor_value, skip entirely
+    # Build rows; if AccountBound and no vendor_value => force 0/0
+    {rows, zeroed_bound_no_vendor} =
       pairs
-      |> Enum.map(fn
-        {%{id: id, vendor_value: vendor},
-         %{"buys" => buys, "sells" => sells} = m} ->
+      |> Enum.map_reduce(0, fn
+        {%{id: id, vendor_value: vendor}, %{"buys" => buys, "sells" => sells} = m}, acc ->
           flags = Map.get(m, "flags", [])
 
-          if accountbound?(flags) do
-            # Account-bound: do NOT use TP prices
-            %{id: id, buy: vendor || 0, sell: 0}
+          if accountbound_only?(flags) do
+            cond do
+              is_nil(vendor) or vendor == 0 ->
+                # overwrite lingering TP values
+                {%{id: id, buy: 0, sell: 0}, acc + 1}
+
+              true ->
+                {%{id: id, buy: vendor, sell: 0}, acc}
+            end
           else
             buy0  = buys  && Map.get(buys,  "unit_price")
             sell0 = sells && Map.get(sells, "unit_price")
             buy   = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
             sell  = if is_nil(sell0), do: 0, else: sell0
-            %{id: id, buy: buy, sell: sell}
+            {%{id: id, buy: buy, sell: sell}, acc}
           end
 
-        _ ->
-          nil
+        _other, acc ->
+          {nil, acc}
       end)
-      |> Enum.reject(&is_nil/1)
+
+    rows = Enum.reject(rows, &is_nil/1)
 
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
@@ -122,7 +130,7 @@ defmodule FastApi.Sync.GW2API do
       end)
 
     dt = System.monotonic_time(:millisecond) - t0
-    Logger.info("[job] gw2.sync_prices completed in #{fmt_ms(dt)} updated=#{updated}")
+    Logger.info("[job] gw2.sync_prices completed in #{fmt_ms(dt)} updated=#{updated} zeroed_bound_no_vendor=#{zeroed_bound_no_vendor}")
 
     {:ok, updated}
   end
@@ -270,12 +278,11 @@ defmodule FastApi.Sync.GW2API do
     |> then(&struct(Fast.Item, &1))
   end
 
-  # Only treat "AccountBound" as bound (per your sample)
-  defp accountbound?(flags) when is_list(flags) do
+  # Exactly and only "AccountBound" (case-sensitive)
+  defp accountbound_only?(flags) when is_list(flags) do
     Enum.any?(flags, &(&1 == "AccountBound"))
   end
-
-  defp accountbound?(_), do: false
+  defp accountbound_only?(_), do: false
 
   # --- helpers ---
 
