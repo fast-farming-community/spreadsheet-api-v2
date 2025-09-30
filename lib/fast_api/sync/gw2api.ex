@@ -52,10 +52,11 @@ defmodule FastApi.Sync.GW2API do
   def sync_prices do
     t0 = System.monotonic_time(:millisecond)
 
+    # Load full struct so we can read flags to decide if account-bound
     items =
       Fast.Item
       |> where([i], i.tradable == true)
-      |> select([i], %{id: i.id, vendor_value: i.vendor_value})
+      |> select([i], i)
       |> Repo.all()
 
     pairs =
@@ -75,12 +76,19 @@ defmodule FastApi.Sync.GW2API do
     rows =
       pairs
       |> Enum.map(fn
-        {%{id: id, vendor_value: vendor}, %{"buys" => buys, "sells" => sells}} ->
-          buy0  = buys  && Map.get(buys,  "unit_price")
-          sell0 = sells && Map.get(sells, "unit_price")
-          buy   = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy0
-          sell  = if is_nil(sell0), do: 0, else: sell0
-          %{id: id, buy: buy, sell: sell}
+        {%Fast.Item{id: id, vendor_value: vendor, flags: flags} = _item,
+         %{"buys" => buys, "sells" => sells}} ->
+          if accountbound?(flags) do
+            # Account-bound: do NOT use TP prices
+            %{id: id, buy: vendor || 0, sell: 0}
+          else
+            buy0  = buys  && Map.get(buys,  "unit_price")
+            sell0 = sells && Map.get(sells, "unit_price")
+            buy   = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
+            sell  = if is_nil(sell0), do: 0, else: sell0
+            %{id: id, buy: buy, sell: sell}
+          end
+
         _ ->
           nil
       end)
@@ -95,7 +103,7 @@ defmodule FastApi.Sync.GW2API do
         batch_with_ts =
           Enum.map(batch, fn row ->
             row
-            |> Map.put_new(:inserted_at, now)
+            |> Map.put_new(:inserted_at, now) # if a new row slips in
             |> Map.put(:updated_at, now)
           end)
 
@@ -244,7 +252,14 @@ defmodule FastApi.Sync.GW2API do
     |> then(&struct(Fast.Item, &1))
   end
 
-  # --- helpers moved INSIDE the module ---
+  # Only treat "AccountBound" as bound (per your GW2 API sample)
+  defp accountbound?(flags) when is_list(flags) do
+    Enum.any?(flags, &(&1 == "AccountBound"))
+  end
+
+  defp accountbound?(_), do: false
+
+  # --- helpers ---
 
   defp to_insert_rows(items, now) do
     items
