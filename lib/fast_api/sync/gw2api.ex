@@ -295,7 +295,6 @@ defmodule FastApi.Sync.GW2API do
       res = fetch_prices_for_chunk(chunk)
       cond do
         res == [] and attempts > 1 ->
-          Logger.warn("prices empty; retrying in #{backoff}ms (left=#{attempts - 1}) ids=#{Enum.map(chunk, & &1.id)}")
           :timer.sleep(backoff)
           fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         res == [] ->
@@ -307,7 +306,6 @@ defmodule FastApi.Sync.GW2API do
     catch
       :exit, reason ->
         if attempts > 1 do
-          Logger.warn("prices exit=#{inspect(reason)}; retrying in #{backoff}ms (left=#{attempts - 1})")
           :timer.sleep(backoff)
           fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
@@ -317,7 +315,6 @@ defmodule FastApi.Sync.GW2API do
     rescue
       e ->
         if attempts > 1 do
-          Logger.warn("prices error=#{Exception.message(e)}; retrying in #{backoff}ms (left=#{attempts - 1})")
           :timer.sleep(backoff)
           fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
@@ -342,7 +339,6 @@ defmodule FastApi.Sync.GW2API do
 
       cond do
         result == [] and attempts > 1 ->
-          Logger.warn("items empty; retrying in #{backoff}ms (left=#{attempts - 1}) url=#{req_url}")
           :timer.sleep(backoff)
           get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
         result == [] ->
@@ -354,7 +350,6 @@ defmodule FastApi.Sync.GW2API do
     catch
       :exit, reason ->
         if attempts > 1 do
-          Logger.warn("items exit=#{inspect(reason)}; retrying in #{backoff}ms (left=#{attempts - 1}) url=#{req_url}")
           :timer.sleep(backoff)
           get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
         else
@@ -364,7 +359,6 @@ defmodule FastApi.Sync.GW2API do
     rescue
       e ->
         if attempts > 1 do
-          Logger.warn("items error=#{Exception.message(e)}; retrying in #{backoff}ms (left=#{attempts - 1}) url=#{req_url}")
           :timer.sleep(backoff)
           get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
         else
