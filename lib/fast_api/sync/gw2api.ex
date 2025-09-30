@@ -9,10 +9,10 @@ defmodule FastApi.Sync.GW2API do
 
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
-  @step 150
-  @concurrency System.schedulers_online() * 4
+  @step 100
+  @concurrency min(System.schedulers_online() * 2, 8)
   @chunk_attempts 3
-  @chunk_backoff_ms 600
+  @chunk_backoff_ms 1_500
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
@@ -223,6 +223,9 @@ defmodule FastApi.Sync.GW2API do
 
   defp request_json(request, retry \\ 0) do
     case Finch.request(request, FastApi.Finch) do
+      {:ok, %Finch.Response{status: status, body: body}} when status >= 500 ->
+        Logger.error("HTTP #{status} from remote; body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
+        []
       {:ok, %Finch.Response{status: status, body: body}} ->
         case Jason.decode(body) do
           {:ok, decoded} when is_list(decoded) ->
@@ -239,7 +242,7 @@ defmodule FastApi.Sync.GW2API do
             Logger.error("Unexpected JSON shape (status #{status})")
             []
           {:error, error} ->
-            Logger.error("Failed to decode JSON (status #{status}): #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 400))}")
+            Logger.error("Failed to decode JSON (status #{status}): #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
             []
         end
       {:error, %Mint.TransportError{reason: :timeout}} when retry < 5 ->
@@ -291,6 +294,7 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp fetch_prices_for_chunk_with_retry(chunk, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
+    :timer.sleep(:rand.uniform(300))
     try do
       res = fetch_prices_for_chunk(chunk)
       cond do
@@ -306,6 +310,7 @@ defmodule FastApi.Sync.GW2API do
     catch
       :exit, reason ->
         if attempts > 1 do
+          Logger.warning("prices exit=#{inspect(reason)}; retrying in #{backoff}ms")
           :timer.sleep(backoff)
           fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
@@ -315,6 +320,7 @@ defmodule FastApi.Sync.GW2API do
     rescue
       e ->
         if attempts > 1 do
+          Logger.warning("prices error=#{Exception.message(e)}; retrying in #{backoff}ms")
           :timer.sleep(backoff)
           fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
         else
@@ -325,8 +331,8 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp get_details_chunk_with_retry(chunk, base_url, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
+    :timer.sleep(:rand.uniform(300))
     req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
-
     try do
       result =
         Finch.build(:get, req_url)
@@ -350,6 +356,7 @@ defmodule FastApi.Sync.GW2API do
     catch
       :exit, reason ->
         if attempts > 1 do
+          Logger.warning("items exit=#{inspect(reason)}; retrying in #{backoff}ms url=#{req_url}")
           :timer.sleep(backoff)
           get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
         else
@@ -359,6 +366,7 @@ defmodule FastApi.Sync.GW2API do
     rescue
       e ->
         if attempts > 1 do
+          Logger.warning("items error=#{Exception.message(e)}; retrying in #{backoff}ms url=#{req_url}")
           :timer.sleep(backoff)
           get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
         else

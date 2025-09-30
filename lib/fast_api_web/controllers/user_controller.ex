@@ -18,34 +18,42 @@ defmodule FastApiWeb.UserController do
             end)
 
     with {:ok, user, _claims} <-
-           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}),
-         true <- Bcrypt.verify_pass(password_params["old_password"] || "", user.password) do
-      new_password = password_params["password"] || password_params["new_password"]
-
-      update_params = %{
-        "password" => new_password,
-        "password_confirmation" => password_params["password_confirmation"],
-        "email" => user.email
-      }
-
-      case Auth.change_password(user, update_params) do
-        {:ok, %User{} = updated_user} ->
-          # issue fresh tokens after password change
-          {:ok, access, _}  = Auth.Token.access_token(updated_user)
-          {:ok, refresh, _} = Auth.Token.refresh_token(updated_user)
-          json(conn, %{access: access, refresh: refresh})
-
-        {:error, changeset} ->
+           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
+      cond do
+        not is_binary(user.password) or user.password == "" ->
+          # Account has no local password set — fail cleanly and timing-safe
+          Bcrypt.no_user_verify()
           conn
-          |> Plug.Conn.put_status(:bad_request)
-          |> json(%{errors: EctoUtils.get_errors(changeset)})
+          |> Plug.Conn.put_status(:unauthorized)
+          |> json(%{errors: ["No password is set for this account. Please complete registration or set a password."]})
+
+        Bcrypt.verify_pass(password_params["old_password"] || "", user.password) ->
+          new_password = password_params["password"] || password_params["new_password"]
+
+          update_params = %{
+            "password" => new_password,
+            "password_confirmation" => password_params["password_confirmation"],
+            "email" => user.email
+          }
+
+          case Auth.change_password(user, update_params) do
+            {:ok, %User{} = updated_user} ->
+              {:ok, access, _}  = Auth.Token.access_token(updated_user)
+              {:ok, refresh, _} = Auth.Token.refresh_token(updated_user)
+              json(conn, %{access: access, refresh: refresh})
+
+            {:error, changeset} ->
+              conn
+              |> Plug.Conn.put_status(:bad_request)
+              |> json(%{errors: EctoUtils.get_errors(changeset)})
+          end
+
+        true ->
+          conn
+          |> Plug.Conn.put_status(:unauthorized)
+          |> json(%{errors: ["Old password is incorrect"]})
       end
     else
-      false ->
-        conn
-        |> Plug.Conn.put_status(:unauthorized)
-        |> json(%{errors: ["Old password is incorrect"]})
-
       _ ->
         conn
         |> Plug.Conn.put_status(:unauthorized)
@@ -86,14 +94,33 @@ defmodule FastApiWeb.UserController do
   end
 
   def login(conn, %{"email" => email, "password" => password}) do
-    user = Auth.get_user_by_email(email)
+    case Auth.get_user_by_email(email) do
+      %User{} = user ->
+        case user.password do
+          hashed when is_binary(hashed) and hashed != "" ->
+            if Bcrypt.verify_pass(password || "", hashed) do
+              login_success(conn, user)
+            else
+              Bcrypt.no_user_verify()
+              conn
+              |> Plug.Conn.put_status(:unauthorized)
+              |> json(%{error: "Invalid username/password combination"})
+            end
 
-    if not is_nil(user) and Bcrypt.verify_pass(password, user.password) do
-      login_success(conn, user)
-    else
-      conn
-      |> Plug.Conn.put_status(:unauthorized)
-      |> json(%{error: "Invalid username/password combination"})
+          _ ->
+            # User exists but has no password set
+            Bcrypt.no_user_verify()
+            conn
+            |> Plug.Conn.put_status(:unauthorized)
+            |> json(%{error: "This account has no password set yet. Please complete registration or set a password."})
+        end
+
+      _ ->
+        # Unknown user — keep timing similar
+        Bcrypt.no_user_verify()
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+        |> json(%{error: "Invalid username/password combination"})
     end
   end
 
