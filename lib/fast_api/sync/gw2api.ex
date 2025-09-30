@@ -63,7 +63,7 @@ defmodule FastApi.Sync.GW2API do
         |> Stream.map(fn
           {%{id: id, vendor_value: vendor}, %{id: id, buys: buys}} ->
             buy0 = Map.get(buys, "unit_price")
-            buy = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy
+            buy  = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy0
             %{id: id, buys: Map.put(buys, "unit_price", buy)}
 
           _ ->
@@ -72,11 +72,19 @@ defmodule FastApi.Sync.GW2API do
         |> Stream.reject(&is_nil/1)
         |> Stream.chunk_every(5_000)
         |> Enum.reduce(0, fn batch, acc ->
+          now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+          rows =
+            Enum.map(batch, fn row ->
+              Map.put(row, :updated_at, now)
+            end)
+
+          # Use values from EXCLUDED (incoming rows) for :buys and :updated_at
           {count, _} =
             Repo.insert_all(
               Fast.Item,
-              batch,
-              on_conflict: [set: [buys: fragment("EXCLUDED.buys"), updated_at: fragment("now()")]],
+              rows,
+              on_conflict: {:replace, [:buys, :updated_at]},
               conflict_target: [:id]
             )
 
@@ -90,6 +98,7 @@ defmodule FastApi.Sync.GW2API do
     {:ok, updated}
   end
 
+  # Fetches price details for a chunk of items (each = %{id, vendor_value})
   defp get_item_details_from_ids(chunk) do
     ids = Enum.map(chunk, & &1.id)
     req_url = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
@@ -98,7 +107,10 @@ defmodule FastApi.Sync.GW2API do
     |> request_json()
     |> Enum.map(&prices_to_atoms_safe/1)
     |> then(fn result ->
-      result_by_id = Map.new(Enum.filter(result, &match?(%{id: _}, &1)), &{&1.id, &1})
+      result_by_id =
+        result
+        |> Enum.filter(&match?(%{id: _}, &1))
+        |> Map.new(&{&1.id, &1})
 
       for %{id: id} = item <- chunk, Map.has_key?(result_by_id, id) do
         {item, Map.fetch!(result_by_id, id)}
@@ -167,7 +179,7 @@ defmodule FastApi.Sync.GW2API do
 
   defp request_json(request, retry \\ 0) do
     case Finch.request(request, FastApi.Finch) do
-      {:ok, %Finch.Response{status: status, body: body}} ->
+      {:ok, %Finch.Response{status: _status, body: body}} ->
         case Jason.decode(body) do
           {:ok, decoded} when is_list(decoded) -> decoded
           {:ok, decoded} when is_map(decoded) -> [decoded]
@@ -184,7 +196,7 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
-  # safe fixed atomization for prices API records
+  # Safe, fixed atomization for top-level GW2 prices keys only
   defp prices_to_atoms_safe(%{"id" => id} = m) do
     %{
       id: id,
