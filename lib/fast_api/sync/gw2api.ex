@@ -23,18 +23,27 @@ defmodule FastApi.Sync.GW2API do
   def sync_items do
     item_ids = get_item_ids()
     commerce_item_ids = get_commerce_item_ids()
+    tradable_set = MapSet.new(commerce_item_ids)
 
-    {tradable, non_tradable} = Enum.split_with(item_ids, &(&1 in commerce_item_ids))
+    {tradable_ids, non_tradable_ids} =
+      Enum.split_with(item_ids, &MapSet.member?(tradable_set, &1))
 
-    tradable
-    |> get_details(@items)
-    |> Enum.map(&to_item(&1, true))
-    |> Enum.each(&Repo.insert(&1, on_conflict: :replace_all, conflict_target: [:id]))
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    non_tradable
-    |> get_details(@items)
-    |> Enum.map(&to_item/1)
-    |> Enum.each(&Repo.insert(&1, on_conflict: :replace_all, conflict_target: [:id]))
+    tradable_rows =
+      tradable_ids
+      |> get_details(@items)
+      |> Enum.map(&to_item(&1, true))
+      |> to_insert_rows(now)
+
+    non_tradable_rows =
+      non_tradable_ids
+      |> get_details(@items)
+      |> Enum.map(&to_item/1)
+      |> to_insert_rows(now)
+
+    batch_upsert(tradable_rows)
+    batch_upsert(non_tradable_rows)
 
     :ok
   end
@@ -86,7 +95,7 @@ defmodule FastApi.Sync.GW2API do
         batch_with_ts =
           Enum.map(batch, fn row ->
             row
-            |> Map.put_new(:inserted_at, now) # for the rare case a new row appears
+            |> Map.put_new(:inserted_at, now)
             |> Map.put(:updated_at, now)
           end)
 
@@ -158,18 +167,30 @@ defmodule FastApi.Sync.GW2API do
   defp get_details(ids, base_url) do
     ids
     |> Enum.chunk_every(@step)
-    |> Enum.flat_map(fn chunk ->
-      req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
+    |> Task.async_stream(
+      fn chunk ->
+        req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
 
-      Finch.build(:get, req_url)
-      |> request_json()
-      |> tap(fn
-        result when length(result) == length(chunk) ->
-          :ok
-        result ->
-          missing_ids = chunk -- Enum.map(result, &Map.get(&1, "id"))
-          Logger.error("Missing IDs for #{req_url}: #{inspect(missing_ids)}")
-      end)
+        result =
+          Finch.build(:get, req_url)
+          |> request_json()
+          |> tap(fn result ->
+            if length(result) != length(chunk) do
+              missing_ids = chunk -- Enum.map(result, &Map.get(&1, "id"))
+              Logger.error("Missing IDs for #{req_url}: #{inspect(missing_ids)}")
+            end
+          end)
+
+        result
+      end,
+      max_concurrency: @concurrency,
+      timeout: 30_000
+    )
+    |> Enum.flat_map(fn
+      {:ok, list} -> list
+      {:exit, reason} ->
+        Logger.error("items fetch failed: #{inspect(reason)}")
+        []
     end)
     |> Enum.map(&keys_to_atoms/1)
   end
@@ -221,5 +242,32 @@ defmodule FastApi.Sync.GW2API do
     params
     |> Map.put(:tradable, tradable)
     |> then(&struct(Fast.Item, &1))
+  end
+
+  # --- helpers moved INSIDE the module ---
+
+  defp to_insert_rows(items, now) do
+    items
+    |> Stream.map(&Map.from_struct/1)
+    |> Stream.map(&Map.drop(&1, [:__meta__, :__struct__]))
+    |> Stream.map(fn row ->
+      row
+      |> Map.put_new(:inserted_at, now)
+      |> Map.put(:updated_at, now)
+    end)
+    |> Enum.to_list()
+  end
+
+  defp batch_upsert(rows) do
+    rows
+    |> Enum.chunk_every(5_000)
+    |> Enum.each(fn batch ->
+      Repo.insert_all(
+        Fast.Item,
+        batch,
+        on_conflict: :replace_all,
+        conflict_target: [:id]
+      )
+    end)
   end
 end
