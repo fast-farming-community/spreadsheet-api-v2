@@ -9,10 +9,20 @@ defmodule FastApi.Sync.GW2API do
 
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
-  @step 100
+  @step 200
   @concurrency min(System.schedulers_online() * 2, 8)
   @chunk_attempts 3
   @chunk_backoff_ms 1_500
+  @flags_cache_ttl_ms 86_400_000
+  @flags_cache_table :gw2_flags
+
+  defp ensure_flags_cache! do
+    case :ets.info(@flags_cache_table) do
+      :undefined ->
+        :ets.new(@flags_cache_table, [:named_table, :set, :public, read_concurrency: true])
+      _ -> :ok
+    end
+  end
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
@@ -22,6 +32,7 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp now_ts(), do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+  defp mono_ms(), do: System.monotonic_time(:millisecond)
 
   @spec sync_items() :: :ok
   def sync_items do
@@ -59,7 +70,7 @@ defmodule FastApi.Sync.GW2API do
   """
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
-    t0 = System.monotonic_time(:millisecond)
+    t0 = mono_ms()
 
     items =
       Fast.Item
@@ -69,11 +80,8 @@ defmodule FastApi.Sync.GW2API do
 
     ids = Enum.map(items, & &1.id)
 
-    flags_by_id =
-      ids
-      |> get_details(@items)
-      |> Enum.filter(&match?(%{id: _}, &1))
-      |> Map.new(fn %{id: id, flags: flags} -> {id, flags || []} end)
+    ensure_flags_cache!()
+    flags_by_id = get_flags_for_ids(ids)
 
     pairs =
       items
@@ -145,11 +153,8 @@ defmodule FastApi.Sync.GW2API do
         acc + count
       end)
 
-    dt = System.monotonic_time(:millisecond) - t0
-
-    Logger.info(
-      "[job] gw2.sync_prices completed in #{fmt_ms(dt)} updated=#{updated} zeroed_bound_no_vendor=#{elem({zeroed_bound_no_vendor, changed_ids}, 0)}"
-    )
+    dt = mono_ms() - t0
+    Logger.info("[job] gw2.sync_prices completed in #{fmt_ms(dt)} updated=#{updated} zeroed_bound_no_vendor=#{zeroed_bound_no_vendor}")
 
     {:ok, %{updated: updated, changed_ids: changed_ids}}
   end
@@ -159,7 +164,7 @@ defmodule FastApi.Sync.GW2API do
   Falls back to full range update if most rows changed.
   """
   def sync_sheet do
-    t0 = System.monotonic_time(:millisecond)
+    t0 = mono_ms()
 
     {:ok, %{updated: updated_prices, changed_ids: changed_ids}} = sync_prices()
 
@@ -178,7 +183,7 @@ defmodule FastApi.Sync.GW2API do
 
     cond do
       MapSet.size(changed_ids) == 0 ->
-        dt = System.monotonic_time(:millisecond) - t0
+        dt = mono_ms() - t0
         Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=0")
         :ok
 
@@ -195,7 +200,7 @@ defmodule FastApi.Sync.GW2API do
             valueInputOption: "RAW"
           )
 
-        dt = System.monotonic_time(:millisecond) - t0
+        dt = mono_ms() - t0
         Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
         :ok
 
@@ -230,7 +235,7 @@ defmodule FastApi.Sync.GW2API do
               }
             )
 
-          dt = System.monotonic_time(:millisecond) - t0
+          dt = mono_ms() - t0
           Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{length(data)}")
           :ok
         end
@@ -256,12 +261,12 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp get_item_ids do
-    Finch.build(:get, @items)
+    Finch.build(:get, @items, [{"accept-encoding", "gzip"}])
     |> request_json()
   end
 
   defp get_commerce_item_ids do
-    Finch.build(:get, @prices)
+    Finch.build(:get, @prices, [{"accept-encoding", "gzip"}])
     |> request_json()
   end
 
@@ -342,7 +347,7 @@ defmodule FastApi.Sync.GW2API do
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
     prices =
-      Finch.build(:get, req_prices)
+      Finch.build(:get, req_prices, [{"accept-encoding", "gzip"}])
       |> request_json()
 
     prices_by_id =
@@ -400,7 +405,7 @@ defmodule FastApi.Sync.GW2API do
     req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
     try do
       result =
-        Finch.build(:get, req_url)
+        Finch.build(:get, req_url, [{"accept-encoding", "gzip"}])
         |> request_json()
 
       if length(result) != length(chunk) do
@@ -439,5 +444,40 @@ defmodule FastApi.Sync.GW2API do
           []
         end
     end
+  end
+
+  defp get_flags_for_ids(ids) do
+    now = mono_ms()
+    ensure_flags_cache!()
+
+    missing =
+      ids
+      |> Enum.reject(fn id ->
+        case :ets.lookup(@flags_cache_table, id) do
+          [{^id, _flags, ts}] when now - ts < @flags_cache_ttl_ms -> true
+          _ -> false
+        end
+      end)
+
+    if missing != [] do
+      fetched =
+        missing
+        |> get_details(@items)
+        |> Enum.filter(&match?(%{id: _}, &1))
+        |> Enum.map(fn %{id: id, flags: flags} -> {id, flags || []} end)
+
+      Enum.each(fetched, fn {id, flags} ->
+        :ets.insert(@flags_cache_table, {id, flags, now})
+      end)
+    end
+
+    ids
+    |> Enum.map(fn id ->
+      case :ets.lookup(@flags_cache_table, id) do
+        [{^id, flags, _ts}] -> {id, flags}
+        _ -> {id, []}
+      end
+    end)
+    |> Map.new()
   end
 end
