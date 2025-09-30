@@ -50,7 +50,7 @@ defmodule FastApi.Sync.GW2API do
         |> select([i], %{id: i.id, vendor_value: i.vendor_value})
         |> Repo.stream()
         |> Stream.chunk_every(@step)
-        |> Task.async_stream(&get_item_details_from_ids/1,
+        |> Task.async_stream(&fetch_prices_for_chunk/1,
           max_concurrency: @concurrency,
           timeout: 30_000
         )
@@ -61,10 +61,14 @@ defmodule FastApi.Sync.GW2API do
             []
         end)
         |> Stream.map(fn
-          {%{id: id, vendor_value: vendor}, %{id: id, buys: buys}} ->
-            buy0 = Map.get(buys, "unit_price")
+          {%{id: id, vendor_value: vendor}, %{"buys" => buys, "sells" => sells}} ->
+            buy0  = buys  && Map.get(buys,  "unit_price")
+            sell0 = sells && Map.get(sells, "unit_price")
+
             buy  = if is_nil(buy0) or buy0 == 0, do: vendor, else: buy0
-            %{id: id, buys: Map.put(buys, "unit_price", buy)}
+            sell = if is_nil(sell0), do: 0, else: sell0
+
+            %{id: id, buy: buy, sell: sell}
 
           _ ->
             nil
@@ -74,17 +78,13 @@ defmodule FastApi.Sync.GW2API do
         |> Enum.reduce(0, fn batch, acc ->
           now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-          rows =
-            Enum.map(batch, fn row ->
-              Map.put(row, :updated_at, now)
-            end)
+          rows = Enum.map(batch, &Map.put(&1, :updated_at, now))
 
-          # Use values from EXCLUDED (incoming rows) for :buys and :updated_at
           {count, _} =
             Repo.insert_all(
               Fast.Item,
               rows,
-              on_conflict: {:replace, [:buys, :updated_at]},
+              on_conflict: {:replace, [:buy, :sell, :updated_at]},
               conflict_target: [:id]
             )
 
@@ -98,22 +98,21 @@ defmodule FastApi.Sync.GW2API do
     {:ok, updated}
   end
 
-  # Fetches price details for a chunk of items (each = %{id, vendor_value})
-  defp get_item_details_from_ids(chunk) do
+  # Helper: fetch price maps for a chunk and align them with items by id
+  defp fetch_prices_for_chunk(chunk) do
     ids = Enum.map(chunk, & &1.id)
     req_url = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
     Finch.build(:get, req_url)
     |> request_json()
-    |> Enum.map(&prices_to_atoms_safe/1)
     |> then(fn result ->
-      result_by_id =
+      by_id =
         result
-        |> Enum.filter(&match?(%{id: _}, &1))
-        |> Map.new(&{&1.id, &1})
+        |> Enum.filter(&match?(%{"id" => _}, &1))
+        |> Map.new(&{&1["id"], &1})
 
-      for %{id: id} = item <- chunk, Map.has_key?(result_by_id, id) do
-        {item, Map.fetch!(result_by_id, id)}
+      for %{id: id} = item <- chunk, Map.has_key?(by_id, id) do
+        {item, Map.fetch!(by_id, id)}
       end
     end)
   end
