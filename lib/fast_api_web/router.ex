@@ -20,13 +20,7 @@ defmodule FastApiWeb.Router do
   end
 
   pipeline :optional_auth do
-    plug Guardian.Plug.VerifyHeader,
-      scheme: "Bearer",
-      claims: %{"iss" => "fast_api"},
-      allow_blank: true
-
-    plug Guardian.Plug.LoadResource, allow_blank: true
-    plug FastApiWeb.Plugs.AssignTier
+    plug FastApiWeb.Plugs.OptionalAuth
   end
 
   scope "/api/v1/auth", FastApiWeb do
