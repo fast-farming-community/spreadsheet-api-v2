@@ -2,24 +2,28 @@ defmodule FastApi.GW2.Client do
   @moduledoc false
   @base "https://api.guildwars2.com"
 
+  # tune these once here
+  @connect_timeout 5_000
+  @pool_timeout    5_000
+  @receive_timeout 15_000   # > 5s to avoid the 5s cutoff
+
   def get(path, opts \\ []) do
     url = @base <> path
 
     headers =
-      [{"accept", "application/json"}] ++
-        case Keyword.get(opts, :token) do
-          nil   -> []
-          token -> [{"authorization", "Bearer " <> String.trim(token)}]
-        end
-
-    finch_opts =
-      Keyword.get(opts, :finch, [
-        connect_timeout: 5_000,
-        pool_timeout: 5_000,
-        receive_timeout: 15_000
-      ])
+      case Keyword.get(opts, :token) do
+        nil   -> []
+        token -> [{"authorization", "Bearer " <> String.trim(token)}]
+      end
 
     req = Finch.build(:get, url, headers)
+
+    # IMPORTANT: pass timeouts to Finch.request/3
+    finch_opts = [
+      connect_timeout: @connect_timeout,
+      pool_timeout: @pool_timeout,
+      receive_timeout: @receive_timeout
+    ]
 
     case Finch.request(req, FastApi.Finch, finch_opts) do
       {:ok, %Finch.Response{status: status, body: body}} ->
@@ -29,16 +33,10 @@ defmodule FastApi.GW2.Client do
         end
 
       {:error, reason} ->
-        {:error, {:transport, normalize_reason(reason)}}
+        # Normalize to help controllers return a clean 502
+        {:error, {:transport, reason}}
     end
   end
-
-  defp normalize_reason(%struct{} = r),
-    do: %{type: inspect(struct), message: Exception.message(r)}
-  defp normalize_reason(r) when is_atom(r) or is_binary(r),
-    do: %{message: to_string(r)}
-  defp normalize_reason(r),
-    do: %{message: inspect(r)}
 
   @doc """
   Validate a GW2 API key by calling /v2/tokeninfo.
@@ -100,8 +98,7 @@ defmodule FastApi.GW2.Client do
     end
   end
 
-  def character_inventory(key, character_name)
-      when is_binary(key) and is_binary(character_name) do
+  def character_inventory(key, character_name) when is_binary(key) and is_binary(character_name) do
     encoded =
       character_name
       |> String.trim()
