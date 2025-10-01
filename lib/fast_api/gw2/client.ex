@@ -2,11 +2,17 @@ defmodule FastApi.GW2.Client do
   @moduledoc false
   @base "https://api.guildwars2.com"
 
-  # tune these once here
   @connect_timeout 5_000
   @pool_timeout    5_000
-  @receive_timeout 15_000   # > 5s to avoid the 5s cutoff
+  @receive_timeout 15_000
 
+  @doc """
+  Generic GET with optional :token and timeout overrides:
+
+    get("/v2/characters", token: key, receive_timeout: 20_000)
+
+  Supported opts: :token, :connect_timeout, :pool_timeout, :receive_timeout
+  """
   def get(path, opts \\ []) do
     url = @base <> path
 
@@ -18,11 +24,10 @@ defmodule FastApi.GW2.Client do
 
     req = Finch.build(:get, url, headers)
 
-    # IMPORTANT: pass timeouts to Finch.request/3
     finch_opts = [
-      connect_timeout: @connect_timeout,
-      pool_timeout: @pool_timeout,
-      receive_timeout: @receive_timeout
+      connect_timeout: Keyword.get(opts, :connect_timeout, @connect_timeout),
+      pool_timeout:    Keyword.get(opts, :pool_timeout,    @pool_timeout),
+      receive_timeout: Keyword.get(opts, :receive_timeout, @receive_timeout)
     ]
 
     case Finch.request(req, FastApi.Finch, finch_opts) do
@@ -33,7 +38,6 @@ defmodule FastApi.GW2.Client do
         end
 
       {:error, reason} ->
-        # Normalize to help controllers return a clean 502
         {:error, {:transport, reason}}
     end
   end
@@ -98,13 +102,20 @@ defmodule FastApi.GW2.Client do
     end
   end
 
-  def character_inventory(key, character_name) when is_binary(key) and is_binary(character_name) do
+  @doc """
+  Character inventory with a safer encoder and per-call timeout override.
+  You can pass :receive_timeout in opts (defaults to 20_000 here).
+  """
+  def character_inventory(key, character_name, opts \\ [])
+      when is_binary(key) and is_binary(character_name) do
     encoded =
       character_name
       |> String.trim()
       |> URI.encode(&URI.char_unreserved?/1)
 
-    case get("/v2/characters/#{encoded}/inventory", token: key) do
+    opts = Keyword.put_new(opts, :receive_timeout, 20_000)
+
+    case get("/v2/characters/#{encoded}/inventory", Keyword.put(opts, :token, key)) do
       {:ok, 200, json} when is_map(json) -> {:ok, json}
       {:ok, status, body}                -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                   -> {:error, reason}

@@ -3,8 +3,6 @@ defmodule FastApiWeb.TrackerController do
 
   @required_perms ~w(characters wallet inventories)
 
-  ## --- Auth & validation ---
-
   def validate_key(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.tokeninfo(key) do
       {:ok, %{name: name, permissions: perms}} ->
@@ -31,8 +29,6 @@ defmodule FastApiWeb.TrackerController do
 
   def validate_key(conn, _),
     do: conn |> put_status(:bad_request) |> json(%{ok: false, error: "Missing key"})
-
-  ## --- Account & character endpoints ---
 
   def characters(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.characters(key) do
@@ -113,51 +109,52 @@ defmodule FastApiWeb.TrackerController do
   def character_inventory(conn, _),
     do: conn |> put_status(:bad_request) |> json(%{error: "Missing key/character"})
 
-  # NEW: bulk inventories fan-out with bounded concurrency
-  def characters_inventories(conn, %{"key" => key, "characters" => chars})
-      when is_binary(key) and is_list(chars) do
-    # sanitize list to binaries (avoid crashes if frontend sends mixed values)
+  def characters_inventories(conn, %{"key" => key, "names" => names}) when is_binary(key) and is_list(names) do
     names =
-      chars
-      |> Enum.filter(&is_binary/1)
+      names
+      |> Enum.map(&to_string/1)
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
       |> Enum.uniq()
 
-    fun = fn name ->
-      case FastApi.GW2.Client.character_inventory(key, name) do
-        {:ok, inv}      -> {:ok, {name, inv}}
-        {:error, reason} -> {:error, {name, reason}}
-      end
+    if names == [] do
+      return_bad_request(conn, "No character names provided")
+    else
+      max_concurrency = 6
+      per_call_timeout = 25_000
+
+      stream =
+        Task.async_stream(
+          names,
+          fn name ->
+            FastApi.GW2.Client.character_inventory(key, name, receive_timeout: per_call_timeout)
+          end,
+          max_concurrency: max_concurrency,
+          timeout: per_call_timeout + 2_000,
+          on_timeout: :kill_task
+        )
+
+      {ok_inventories, _errors} =
+        Enum.zip(names, stream)
+        |> Enum.reduce({[], []}, fn {name, result}, {oks, errs} ->
+          case result do
+            {:ok, {:ok, inv}} ->
+              {[Map.put(inv, "character", name) | oks], errs}
+
+            {:ok, {:error, reason}} ->
+              {oks, [%{character: name, error: inspect(reason)} | errs]}
+
+            {:exit, _} ->
+              {oks, [%{character: name, error: "timeout"} | errs]}
+          end
+        end)
+
+      json(conn, Enum.reverse(ok_inventories))
     end
-
-    results =
-      Task.Supervisor.async_stream(
-        FastApi.TaskSup,
-        names,
-        fun,
-        max_concurrency: 5,
-        timeout: 30_000
-      )
-      |> Enum.reduce(%{ok: %{}, errors: %{}}, fn
-        {:ok, {:ok, {name, inv}}}, acc ->
-          %{acc | ok: Map.put(acc.ok, name, inv)}
-
-        {:ok, {:error, {name, reason}}}, acc ->
-          %{acc | errors: Map.put(acc.errors, name, inspect(reason))}
-
-        {:exit, reason}, acc ->
-          %{acc | errors: Map.put(acc.errors, "task_exit", inspect(reason))}
-      end)
-
-    status = if map_size(results.errors) > 0, do: :multi_status, else: :ok
-    conn |> put_status(status) |> json(results)
   end
 
   def characters_inventories(conn, _),
-    do: conn |> put_status(:bad_request) |> json(%{error: "Missing key/characters"})
-
-  ## --- Catalog (public) ---
+    do: return_bad_request(conn, "Missing key or names")
 
   def items(conn, %{"ids" => ids}) do
     ids = normalize_ids(ids)
@@ -170,9 +167,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
   end
-
   def items(conn, _),
-    do: conn |> put_status(:bad_request) |> json(%{error: "Missing ids"})
+    do: return_bad_request(conn, "Missing ids")
 
   def prices(conn, %{"ids" => ids}) do
     ids = normalize_ids(ids)
@@ -185,9 +181,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
   end
-
   def prices(conn, _),
-    do: conn |> put_status(:bad_request) |> json(%{error: "Missing ids"})
+    do: return_bad_request(conn, "Missing ids")
 
   def currencies(conn, %{"ids" => ids}) do
     ids = normalize_ids(ids)
@@ -200,14 +195,14 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
   end
-
   def currencies(conn, _),
-    do: conn |> put_status(:bad_request) |> json(%{error: "Missing ids"})
-
-  ## --- Helpers ---
+    do: return_bad_request(conn, "Missing ids")
 
   defp normalize_ids(ids) when is_list(ids),    do: Enum.map(ids, &to_string/1)
   defp normalize_ids(ids) when is_binary(ids),  do: String.split(ids, ",", trim: true)
   defp normalize_ids(%{"ids" => ids}),          do: normalize_ids(ids)
-  defp normalize_ids(_),                        do: []
+  defp normalize_ids(_),                         do: []
+
+  defp return_bad_request(conn, msg),
+    do: conn |> put_status(:bad_request) |> json(%{error: msg})
 end
