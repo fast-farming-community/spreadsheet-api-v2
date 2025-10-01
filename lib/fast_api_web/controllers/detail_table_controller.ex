@@ -17,7 +17,7 @@ defmodule FastApiWeb.DetailTableController do
           key: t.key,
           name: t.name,
           description: t.description,
-          rows: ^(TierRows.rows_expr(tier, t))
+          rows: TierRows.rows_expr(tier, t)
         }
 
     rows = Repo.all(q)
