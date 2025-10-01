@@ -62,6 +62,7 @@ tasks:
       MIX_ENV: dev
 
   migrate-prod:
+    deps: [load-env]
     cmds:
       - mix ecto.migrate
     env:
