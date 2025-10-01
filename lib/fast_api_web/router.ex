@@ -17,8 +17,13 @@ defmodule FastApiWeb.Router do
     plug FastApi.PlugAttack
   end
 
+  # - verifies the header
+  # - loads resource/claims, read role
+  # - assign :role and :tier for downstream controllers
   pipeline :secured do
     plug FastApi.Auth.Pipeline
+    plug Guardian.Plug.LoadResource, allow_blank: false
+    plug FastApiWeb.Plugs.AssignTier
   end
 
   scope "/api/v1/auth", FastApiWeb do
@@ -51,14 +56,9 @@ defmodule FastApiWeb.Router do
     get "/:module/:collection", FeatureController, :get_page
   end
 
-  # Enables the Swoosh mailbox preview in development.
-  #
-  # Note that preview only shows emails that were sent by the same
-  # node running the Phoenix server.
   if Mix.env() == :dev do
     scope "/dev" do
       pipe_through :browser
-
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
