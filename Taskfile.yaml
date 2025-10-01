@@ -61,6 +61,12 @@ tasks:
     env:
       MIX_ENV: dev
 
+  migrate-prod:
+    cmds:
+      - mix ecto.migrate
+    env:
+      MIX_ENV: prod
+
   run-dev:
     cmds:
       - iex -S mix phx.server
