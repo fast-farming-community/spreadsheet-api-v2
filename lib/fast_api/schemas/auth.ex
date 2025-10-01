@@ -25,7 +25,6 @@ defmodule FastApi.Schemas.Auth do
       field :token, :string, default: Ecto.UUID.generate()
       field :verified, :boolean, default: false
 
-      # NEW
       field :api_keys, :map, default: %{}
       field :ingame_name, :string
 
@@ -61,7 +60,6 @@ defmodule FastApi.Schemas.Auth do
       |> put_hash()
     end
 
-    # Optional profile updater (api_keys + ingame_name)
     def changeset(user, params, :profile) do
       user
       |> cast(params, [:api_keys, :ingame_name])
@@ -98,7 +96,6 @@ defmodule FastApi.Schemas.Auth do
       |> validate_confirmation(:password, required: true)
     end
 
-    # API key validation (map of strings)
     defp validate_api_keys(%Ecto.Changeset{} = changeset) do
       validate_change(changeset, :api_keys, fn :api_keys, value ->
         cond do
@@ -107,14 +104,16 @@ defmodule FastApi.Schemas.Auth do
 
           is_map(value) ->
             regex = ~r/^[A-Za-z0-9-]{20,128}$/
-            bad =
-              value
-              |> Enum.reject(fn
-                {_k, v} when is_binary(v) and v =~ regex -> true
-                _ -> false
+
+            invalid =
+              Enum.filter(value, fn
+                {_k, v} when is_binary(v) ->
+                  not Regex.match?(regex, v)
+                _ ->
+                  true
               end)
 
-            if bad == [] do
+            if invalid == [] do
               []
             else
               [{:api_keys, "All API keys must be strings that look like valid keys"}]
