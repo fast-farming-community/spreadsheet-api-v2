@@ -31,14 +31,14 @@ defmodule FastApi.Sync.Features do
     - every 12th: + free
   """
   def execute_cycle() do
-    n = next_cycle_number()
+    n = next_cycle_number()  # now returns an integer
 
     tiers =
       [:gold]
       |> then(fn acc -> if rem(n, 2)  == 0, do: [:silver | acc], else: acc end)
       |> then(fn acc -> if rem(n, 4)  == 0, do: [:copper | acc], else: acc end)
       |> then(fn acc -> if rem(n, 12) == 0, do: [:free   | acc], else: acc end)
-      |> Enum.reverse() # gold, silver, copper, free in that order
+      |> Enum.reverse()
 
     for tier <- tiers do
       execute(Fast.Table, tier)
@@ -321,31 +321,34 @@ defmodule FastApi.Sync.Features do
   end
 
   defp next_cycle_number() do
-    Repo.transaction(fn ->
-      case Repo.get_by(Fast.Metadata, name: @cycle_meta_key) do
-        nil ->
-          data = %{@cycle_field => 1} |> Jason.encode!()
-          %Fast.Metadata{name: @cycle_meta_key}
-          |> Fast.Metadata.changeset(%{data: data})
-          |> Repo.insert!()
-          1
+    case Repo.transaction(fn ->
+          case Repo.get_by(Fast.Metadata, name: @cycle_meta_key) do
+            nil ->
+              data = %{@cycle_field => 1} |> Jason.encode!()
+              %Fast.Metadata{name: @cycle_meta_key}
+              |> Fast.Metadata.changeset(%{data: data})
+              |> Repo.insert!()
+              1
 
-        %Fast.Metadata{} = row ->
-          current =
-            case row.data && Jason.decode(row.data) do
-              {:ok, %{@cycle_field => n}} when is_integer(n) -> n
-              _ -> 0
-            end
+            %Fast.Metadata{} = row ->
+              current =
+                case row.data && Jason.decode(row.data) do
+                  {:ok, %{@cycle_field => n}} when is_integer(n) -> n
+                  _ -> 0
+                end
 
-          next = current + 1
-          new_data = %{@cycle_field => next} |> Jason.encode!()
+              next = current + 1
+              new_data = %{@cycle_field => next} |> Jason.encode!()
 
-          row
-          |> Fast.Metadata.changeset(%{data: new_data})
-          |> Repo.update!()
+              row
+              |> Fast.Metadata.changeset(%{data: new_data})
+              |> Repo.update!()
 
-          next
-      end
-    end)
+              next
+          end
+        end) do
+      {:ok, n} -> n
+      {:error, _} -> 1
+    end
   end
 end
