@@ -7,6 +7,7 @@ defmodule FastApiWeb.DetailTableController do
 
   def index_by_page(conn, %{"page_id" => page_id}) do
     tier = conn.assigns.tier || :free
+    rows_dyn = TierRows.rows_dynamic(tier)
 
     q =
       from t in DetailTable,
@@ -17,7 +18,7 @@ defmodule FastApiWeb.DetailTableController do
           key: t.key,
           name: t.name,
           description: t.description,
-          rows: TierRows.rows_expr(tier, t)
+          rows: ^rows_dyn
         }
 
     rows = Repo.all(q)
