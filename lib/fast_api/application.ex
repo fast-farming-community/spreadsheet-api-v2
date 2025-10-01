@@ -13,9 +13,12 @@ defmodule FastApi.Application do
        }},
       {PlugAttack.Storage.Ets, name: FastApi.PlugAttack.Storage, clean_period: 60_000},
 
+      # Bounded-concurrency fan-out uses Task.Supervisor
+      {Task.Supervisor, name: FastApi.TaskSup},
+
       # Finch HTTP client for outbound calls (GW2 API etc.)
-      # You can tune pool size if you expect higher concurrency.
-      {Finch, name: FastApi.Finch, pools: %{default: [size: 10]}},
+      # Bigger pool to comfortably handle fan-out with max_concurrency.
+      {Finch, name: FastApi.Finch, pools: %{default: [size: 50, count: 2]}},
 
       FastApi.Repo,
       FastApi.Scheduler,

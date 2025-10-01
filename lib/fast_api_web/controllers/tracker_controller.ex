@@ -37,10 +37,8 @@ defmodule FastApiWeb.TrackerController do
   def characters(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.characters(key) do
       {:ok, names} -> json(conn, names)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -52,10 +50,8 @@ defmodule FastApiWeb.TrackerController do
   def account_bank(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_bank(key) do
       {:ok, items} -> json(conn, items)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -67,10 +63,8 @@ defmodule FastApiWeb.TrackerController do
   def account_materials(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_materials(key) do
       {:ok, materials} -> json(conn, materials)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -82,10 +76,8 @@ defmodule FastApiWeb.TrackerController do
   def account_inventory(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_inventory(key) do
       {:ok, shared} -> json(conn, shared)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -97,10 +89,8 @@ defmodule FastApiWeb.TrackerController do
   def account_wallet(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_wallet(key) do
       {:ok, wallet} -> json(conn, wallet)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -113,10 +103,8 @@ defmodule FastApiWeb.TrackerController do
       when is_binary(key) and is_binary(character) do
     case FastApi.GW2.Client.character_inventory(key, character) do
       {:ok, inv} -> json(conn, inv)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -125,6 +113,50 @@ defmodule FastApiWeb.TrackerController do
   def character_inventory(conn, _),
     do: conn |> put_status(:bad_request) |> json(%{error: "Missing key/character"})
 
+  # NEW: bulk inventories fan-out with bounded concurrency
+  def characters_inventories(conn, %{"key" => key, "characters" => chars})
+      when is_binary(key) and is_list(chars) do
+    # sanitize list to binaries (avoid crashes if frontend sends mixed values)
+    names =
+      chars
+      |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+
+    fun = fn name ->
+      case FastApi.GW2.Client.character_inventory(key, name) do
+        {:ok, inv}      -> {:ok, {name, inv}}
+        {:error, reason} -> {:error, {name, reason}}
+      end
+    end
+
+    results =
+      Task.Supervisor.async_stream(
+        FastApi.TaskSup,
+        names,
+        fun,
+        max_concurrency: 5,
+        timeout: 30_000
+      )
+      |> Enum.reduce(%{ok: %{}, errors: %{}}, fn
+        {:ok, {:ok, {name, inv}}}, acc ->
+          %{acc | ok: Map.put(acc.ok, name, inv)}
+
+        {:ok, {:error, {name, reason}}}, acc ->
+          %{acc | errors: Map.put(acc.errors, name, inspect(reason))}
+
+        {:exit, reason}, acc ->
+          %{acc | errors: Map.put(acc.errors, "task_exit", inspect(reason))}
+      end)
+
+    status = if map_size(results.errors) > 0, do: :multi_status, else: :ok
+    conn |> put_status(status) |> json(results)
+  end
+
+  def characters_inventories(conn, _),
+    do: conn |> put_status(:bad_request) |> json(%{error: "Missing key/characters"})
+
   ## --- Catalog (public) ---
 
   def items(conn, %{"ids" => ids}) do
@@ -132,10 +164,8 @@ defmodule FastApiWeb.TrackerController do
 
     case FastApi.GW2.Client.items(ids) do
       {:ok, list} -> json(conn, list)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -149,10 +179,8 @@ defmodule FastApiWeb.TrackerController do
 
     case FastApi.GW2.Client.prices(ids) do
       {:ok, list} -> json(conn, list)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -166,10 +194,8 @@ defmodule FastApiWeb.TrackerController do
 
     case FastApi.GW2.Client.currencies(ids) do
       {:ok, list} -> json(conn, list)
-
       {:error, {:unexpected_status, status, body}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
-
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
     end
@@ -183,5 +209,5 @@ defmodule FastApiWeb.TrackerController do
   defp normalize_ids(ids) when is_list(ids),    do: Enum.map(ids, &to_string/1)
   defp normalize_ids(ids) when is_binary(ids),  do: String.split(ids, ",", trim: true)
   defp normalize_ids(%{"ids" => ids}),          do: normalize_ids(ids)
-  defp normalize_ids(_),                         do: []
+  defp normalize_ids(_),                        do: []
 end
