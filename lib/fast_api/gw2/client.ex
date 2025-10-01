@@ -83,12 +83,16 @@ defmodule FastApi.GW2.Client do
     end
 
     def character_inventory(key, character_name) when is_binary(key) and is_binary(character_name) do
-        encoded = URI.encode_www_form(String.trim(character_name))
-        case get("/v2/characters/#{encoded}/inventory", token: key) do
-            {:ok, 200, json} when is_map(json) -> {:ok, json}
-            {:ok, status, body} -> {:error, {:unexpected_status, status, body}}
-            {:error, reason} -> {:error, reason}
-        end
+      encoded =
+        character_name
+        |> String.trim()
+        |> URI.encode(&URI.char_unreserved?/1)
+
+      case get("/v2/characters/#{encoded}/inventory", token: key) do
+        {:ok, 200, json} when is_map(json) -> {:ok, json}
+        {:ok, status, body} -> {:error, {:unexpected_status, status, body}}
+        {:error, reason} -> {:error, reason}
+      end
     end
     
     def items(ids) when is_list(ids) do
