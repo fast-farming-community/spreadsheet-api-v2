@@ -200,21 +200,24 @@ defmodule FastApiWeb.UserController do
     api_keys =
       case Map.get(params, "api_keys") do
         m when is_map(m) ->
-          m
-          |> Enum.reduce(%{}, fn
+          Enum.reduce(m, %{}, fn
             {k, v}, acc when is_binary(k) and is_binary(v) ->
               Map.put(acc, k, v)
-            {k, v}, acc ->
+            _kv, acc ->
               acc
           end)
 
-        _ -> nil
+        _ ->
+          nil
       end
 
     ingame_name =
       case Map.get(params, "ingame_name") do
-        s when is_binary(s) and String.trim(s) != "" -> String.trim(s)
-        _ -> nil
+        s when is_binary(s) ->
+          trimmed = String.trim(s)
+          if trimmed == "", do: nil, else: trimmed
+        _ ->
+          nil
       end
 
     %{}
@@ -222,7 +225,7 @@ defmodule FastApiWeb.UserController do
     |> maybe_put("ingame_name", ingame_name)
   end
 
-  defp sanitize_profile_params(_), do: %{}
+defp sanitize_profile_params(_), do: %{}
 
   defp maybe_put(map, _k, nil), do: map
   defp maybe_put(map, k, v), do: Map.put(map, k, v)
