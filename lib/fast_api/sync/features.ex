@@ -260,16 +260,25 @@ defmodule FastApi.Sync.Features do
     name = metadata_name(repo)
     tier_key = tier_label(tier)
 
-    new_data =
+    base_map =
       case Repo.get_by(Fast.Metadata, name: name) do
-        nil -> %{"updated_at" => %{}}
-        %Fast.Metadata{data: nil} -> %{"updated_at" => %{}}
+        nil -> %{}
+        %Fast.Metadata{data: nil} -> %{}
         %Fast.Metadata{data: json} ->
           case Jason.decode(json) do
-            {:ok, m} -> m
-            _ -> %{"updated_at" => %{}}
+            {:ok, %{} = m} -> m
+            _ -> %{}
           end
       end
+
+    # ensure "updated_at" is a map
+    data_map =
+      Map.update(base_map, "updated_at", %{}, fn v ->
+        if is_map(v), do: v, else: %{}
+      end)
+
+    new_data =
+      data_map
       |> put_in(["updated_at", tier_key], updated_at)
       |> Jason.encode!()
 
@@ -295,6 +304,7 @@ defmodule FastApi.Sync.Features do
         end
     end
   end
+
 
   defp log_and_raise(table, reason, context) do
     label = table_label(table)
