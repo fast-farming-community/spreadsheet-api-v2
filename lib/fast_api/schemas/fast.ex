@@ -11,7 +11,6 @@ defmodule FastApi.Schemas.Fast do
       field(:order, :integer)
       field(:published, :boolean)
       field(:title, :string)
-
       timestamps()
     end
   end
@@ -22,23 +21,9 @@ defmodule FastApi.Schemas.Fast do
 
     @derive {Jason.Encoder,
              only: [
-               :armor,
-               :burstRotation,
-               :multiTarget,
-               :name,
-               :notice,
-               :overview,
-               :profession,
-               :published,
-               :singleTarget,
-               :skills,
-               :specialization,
-               :template,
-               :traits,
-               :traitsInfo,
-               :trinkets,
-               :utilitySkills,
-               :weapons
+               :armor, :burstRotation, :multiTarget, :name, :notice, :overview, :profession,
+               :published, :singleTarget, :skills, :specialization, :template,
+               :traits, :traitsInfo, :trinkets, :utilitySkills, :weapons
              ]}
     schema "builds" do
       field(:armor, :string)
@@ -58,7 +43,6 @@ defmodule FastApi.Schemas.Fast do
       field(:trinkets, :string)
       field(:utilitySkills, :string)
       field(:weapons, :string)
-
       timestamps()
     end
   end
@@ -72,7 +56,6 @@ defmodule FastApi.Schemas.Fast do
       field(:name, :string)
       field(:published, :boolean)
       field(:type, :string)
-
       timestamps()
     end
   end
@@ -86,7 +69,6 @@ defmodule FastApi.Schemas.Fast do
       field(:name, :string)
       has_many(:detail_tables, FastApi.Schemas.Fast.DetailTable)
       field(:published, :boolean)
-
       timestamps()
     end
   end
@@ -103,14 +85,19 @@ defmodule FastApi.Schemas.Fast do
       field(:key, :string)
       field(:name, :string)
       field(:range, :string)
+
+      # legacy + new tiered payloads
       field(:rows, :string)
+      field(:rows_copper, :string)
+      field(:rows_silver, :string)
+      field(:rows_gold, :string)
 
       timestamps()
     end
 
     def changeset(table, params \\ %{}) do
       table
-      |> cast(params, [:rows])
+      |> cast(params, [:rows, :rows_copper, :rows_silver, :rows_gold])
       |> unique_constraint(:detail_tables_unique_id)
     end
   end
@@ -124,7 +111,6 @@ defmodule FastApi.Schemas.Fast do
       field(:name, :string)
       has_many(:pages, FastApi.Schemas.Fast.Page)
       field(:published, :boolean)
-
       timestamps()
     end
   end
@@ -141,7 +127,6 @@ defmodule FastApi.Schemas.Fast do
       field(:order, :integer)
       field(:published, :boolean)
       field(:title, :string)
-
       timestamps()
     end
   end
@@ -163,7 +148,6 @@ defmodule FastApi.Schemas.Fast do
       field(:tradable, :boolean)
       field(:type, :string)
       field(:vendor_value, :integer)
-
       timestamps()
     end
 
@@ -180,19 +164,18 @@ defmodule FastApi.Schemas.Fast do
     Store JSON blobs (data) containing website metadata
 
     Default metadata (name):
-      - main: Contains `updated_at` time for feature sync
-      - detail: Contains `updated_at` time for detail sync
-      - index: Contains the table index
-      - public: Contains CHANGELOG, WEBSITE_CONTENT_UPDATES and WEBSITE_TODOS update times
+      - main:    per-tier `updated_at` for feature sync
+      - detail:  per-tier `updated_at` for detail sync
+      - index:   table index
+      - public:  CHANGELOG/WEBSITE_CONTENT_UPDATES/WEBSITE_TODOS timestamps
     """
     use Ecto.Schema
     import Ecto.Changeset
 
     @derive {Jason.Encoder, only: [:name, :data, :updated_at]}
     schema "metadata" do
-      field(:data, :string)
+      field(:data, :string)   # JSON string
       field(:name, :string)
-
       timestamps()
     end
 
@@ -209,7 +192,6 @@ defmodule FastApi.Schemas.Fast do
       field(:name, :string)
       field(:published, :boolean)
       has_many(:tables, FastApi.Schemas.Fast.Table)
-
       timestamps()
     end
   end
@@ -227,15 +209,20 @@ defmodule FastApi.Schemas.Fast do
       belongs_to(:page, FastApi.Schemas.Fast.Page)
       field :published, :boolean
       field :range, :string
-      field :rows, :string
-      field :restrictions, :map, virtual: true
 
+      # legacy + new tiered payloads
+      field :rows, :string
+      field :rows_copper, :string
+      field :rows_silver, :string
+      field :rows_gold, :string
+
+      field :restrictions, :map, virtual: true
       timestamps()
     end
 
     def changeset(table, params \\ %{}) do
       table
-      |> cast(params, [:rows])
+      |> cast(params, [:rows, :rows_copper, :rows_silver, :rows_gold])
       |> unique_constraint(:tables_unique_id)
     end
   end

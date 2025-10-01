@@ -1,31 +1,10 @@
 import Config
 
-# config/runtime.exs is executed for all environments, including
-# during releases. It is executed after compilation and before the
-# system starts, so it is typically used to load production configuration
-# and secrets from environment variables or elsewhere. Do not define
-# any compile-time configuration in here, as it won't be applied.
-# The block below contains prod specific runtime configuration.
-
-# ## Using releases
-#
-# If you use `mix release`, you need to explicitly enable the server
-# by passing the PHX_SERVER=true when you start it:
-#
-#     PHX_SERVER=true bin/fast_api start
-#
-# Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
-# script that automatically sets the env var above.
 if System.get_env("PHX_SERVER") do
   config :fast_api, FastApiWeb.Endpoint, server: true
 end
 
 if config_env() == :prod do
-  # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
       raise """
@@ -38,14 +17,7 @@ if config_env() == :prod do
 
   config :fast_api, FastApiWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/plug_cowboy/Plug.Cowboy.html
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0},
-      port: port
-    ],
+    http: [ip: {0,0,0,0,0,0,0,0}, port: port],
     secret_key_base: secret_key_base
 
   config :fast_api, FastApi.Auth.Token,
@@ -67,17 +39,38 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QUANTUM JOBS
+  # ─────────────────────────────────────────────────────────────────────────────
   config :fast_api, FastApi.Scheduler,
     jobs: [
+      # Prices → Google Sheet (fast; keeps Sheets hot for features)
       {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-      {"@daily", {FastApi.Sync.GW2API, :sync_items, []}}, 
-      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table]}},
-      {"1 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable]}},
+      {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
+
+      # Features: write tiered rows into DB from Google Sheets
+      # gold (and premium) – every 5 minutes
+      {"*/5 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :gold]}},
+      {"*/5 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :gold]}},
+
+      # silver – every 10 minutes
+      {"*/10 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :silver]}},
+      {"*/10 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :silver]}},
+
+      # copper – every 20 minutes
+      {"*/20 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :copper]}},
+      {"*/20 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :copper]}},
+
+      # free (legacy) – keep hourly for non-patrons/frontpage caches
+      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :free]}},
+      {"1 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :free]}},
+
+      # existing maintenance/patreon/public/indexer
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
       {"@hourly", {FastApi.Sync.Public, :execute, []}},
-      {"@daily", {FastApi.Sync.Indexer, :execute, []}}
+      {"@daily",  {FastApi.Sync.Indexer, :execute, []}}
     ]
 
   # ## Configuring the mailer
