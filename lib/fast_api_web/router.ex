@@ -13,10 +13,6 @@ defmodule FastApiWeb.Router do
     plug :accepts, ["json"]
   end
 
-  pipeline :throttle do
-    plug FastApi.PlugAttack
-  end
-
   pipeline :secured do
     plug FastApi.Auth.Pipeline
     plug Guardian.Plug.LoadResource, allow_blank: false
@@ -24,7 +20,13 @@ defmodule FastApiWeb.Router do
   end
 
   pipeline :optional_auth do
-    plug FastApiWeb.Plugs.OptionalAuth
+    plug Guardian.Plug.VerifyHeader,
+      scheme: "Bearer",
+      claims: %{"iss" => "fast_api"},
+      allow_blank: true
+
+    plug Guardian.Plug.LoadResource, allow_blank: true
+    plug FastApiWeb.Plugs.AssignTier
   end
 
   scope "/api/v1/auth", FastApiWeb do
@@ -40,7 +42,7 @@ defmodule FastApiWeb.Router do
   end
 
   scope "/api/v1", FastApiWeb do
-    pipe_through [:api, :throttle, :optional_auth]
+    pipe_through [:api, :optional_auth]
 
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds
@@ -55,7 +57,7 @@ defmodule FastApiWeb.Router do
   end
 
   scope "/api/v1", FastApiWeb do
-    pipe_through [:api, :throttle, :secured]
+    pipe_through [:api, :optional_auth]
 
     get "/details/:module/:collection/:item", DetailController, :get_item_page
     get "/:module/:collection", FeatureController, :get_page
