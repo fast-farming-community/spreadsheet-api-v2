@@ -1,4 +1,3 @@
-# config/config.exs
 import Config
 
 config :fast_api, FastApiWeb.Endpoint,
@@ -6,6 +5,20 @@ config :fast_api, FastApiWeb.Endpoint,
   render_errors: [view: FastApiWeb.ErrorView, accepts: ~w(html json), layout: false],
   pubsub_server: FastApi.PubSub,
   live_view: [signing_salt: "N7gdh9BX"]
+
+config :cors_plug,
+  origin: [
+    "https://fast.farming-community.eu",
+    "https://farming-community.eu",
+    "https://www.farming-community.eu",
+    "http://localhost:4200",
+    "http://127.0.0.1:4200"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  headers: ["Authorization", "Content-Type"],
+  expose: ["Content-Length"],
+  max_age: 86_400,
+  send_preflight_response?: true
 
 config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,

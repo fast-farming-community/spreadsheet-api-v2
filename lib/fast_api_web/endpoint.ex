@@ -1,29 +1,24 @@
 defmodule FastApiWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :fast_api
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
     key: "_fast_api_key",
     signing_salt: "uQ39CwOK"
   ]
 
-  # Serve at "/" the static files from "priv/static" directory.
   plug Plug.Static,
     at: "/",
     from: :fast_api,
     gzip: false,
     only: ~w(assets fonts images favicon.ico robots.txt)
 
-  # Code reloading can be explicitly enabled under the :code_reloader configuration.
   if code_reloading? do
     plug Phoenix.CodeReloader
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :fast_api
   end
 
-  # Allow CORS during development (kept from legacy)
+  # CORS must come BEFORE parsers so preflights and error responses get headers
   plug CORSPlug
 
   plug Plug.RequestId
