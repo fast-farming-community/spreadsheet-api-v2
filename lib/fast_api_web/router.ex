@@ -37,6 +37,12 @@ defmodule FastApiWeb.Router do
     post "/profile", UserController, :update_profile
   end
 
+  # NEW: CORS-safe tracker API key validation
+  scope "/api/v1/tracker", FastApiWeb do
+    pipe_through [:api]
+    post "/validate-key", TrackerController, :validate_key
+  end
+
   scope "/api/v1", FastApiWeb do
     pipe_through [:api, :optional_auth]
 
@@ -57,6 +63,20 @@ defmodule FastApiWeb.Router do
 
     get "/details/:module/:collection/:item", DetailController, :get_item_page
     get "/:module/:collection", FeatureController, :get_page
+  end
+
+  scope "/api/v1/tracker", FastApiWeb do
+    pipe_through [:api]
+    post "/validate-key",          TrackerController, :validate_key
+    post "/characters",            TrackerController, :characters
+    post "/characters/inventory",  TrackerController, :character_inventory
+    post "/account/bank",          TrackerController, :account_bank
+    post "/account/materials",     TrackerController, :account_materials
+    post "/account/inventory",     TrackerController, :account_inventory
+    post "/account/wallet",        TrackerController, :account_wallet
+    post "/items",      TrackerController, :items
+    post "/prices",     TrackerController, :prices
+    post "/currencies", TrackerController, :currencies
   end
 
   if Mix.env() == :dev do

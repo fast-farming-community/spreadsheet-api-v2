@@ -1,6 +1,5 @@
 defmodule FastApi.Application do
   @moduledoc false
-
   use Application
 
   @impl true
@@ -13,17 +12,15 @@ defmodule FastApi.Application do
          scopes: ["https://www.googleapis.com/auth/spreadsheets"]
        }},
       {PlugAttack.Storage.Ets, name: FastApi.PlugAttack.Storage, clean_period: 60_000},
-      {Finch, name: FastApi.Finch},
+
+      # Finch HTTP client for outbound calls (GW2 API etc.)
+      # You can tune pool size if you expect higher concurrency.
+      {Finch, name: FastApi.Finch, pools: %{default: [size: 10]}},
+
       FastApi.Repo,
       FastApi.Scheduler,
-      # Start the Telemetry supervisor
       FastApiWeb.Telemetry,
-      # Start the PubSub system
-      # {Phoenix.PubSub, name: FastApi.PubSub},
-      # Start the Endpoint (http/https)
       FastApiWeb.Endpoint
-      # Start a worker by calling: FastApi.Worker.start_link(arg)
-      # {FastApi.Worker, arg}
     ]
 
     opts = [strategy: :one_for_one, name: FastApi.Supervisor]
