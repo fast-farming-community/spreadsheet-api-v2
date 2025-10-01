@@ -17,27 +17,18 @@ defmodule FastApiWeb.Router do
     plug FastApi.PlugAttack
   end
 
-  # Strict auth: token required
   pipeline :secured do
     plug FastApi.Auth.Pipeline
     plug Guardian.Plug.LoadResource, allow_blank: false
     plug FastApiWeb.Plugs.AssignTier
   end
 
-  # Optional auth: no token -> acts as free; with token -> honors role/tier
   pipeline :optional_auth do
-    plug Guardian.Plug.VerifyHeader,
-      scheme: "Bearer",
-      claims: %{"iss" => "fast_api"},
-      allow_blank: true
-
-    plug Guardian.Plug.LoadResource, allow_blank: true
-    plug FastApiWeb.Plugs.AssignTier
+    plug FastApiWeb.Plugs.OptionalAuth
   end
 
-  # -------- Auth endpoints --------
   scope "/api/v1/auth", FastApiWeb do
-    pipe_through [:api, :throttle]
+    pipe_through [:api]
 
     post "/login", UserController, :login
     post "/pre-register", UserController, :pre_register
@@ -48,7 +39,6 @@ defmodule FastApiWeb.Router do
     post "/change-password", UserController, :change_password
   end
 
-  # -------- Public / optional-auth GETs (no token required) --------
   scope "/api/v1", FastApiWeb do
     pipe_through [:api, :throttle, :optional_auth]
 
@@ -64,7 +54,6 @@ defmodule FastApiWeb.Router do
     get "/metadata/indexes", MetaController, :index
   end
 
-  # -------- Tiered data (requires token) --------
   scope "/api/v1", FastApiWeb do
     pipe_through [:api, :throttle, :secured]
 
