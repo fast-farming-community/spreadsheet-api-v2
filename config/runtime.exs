@@ -39,33 +39,12 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # QUANTUM JOBS
-  # ─────────────────────────────────────────────────────────────────────────────
   config :fast_api, FastApi.Scheduler,
     jobs: [
       # Prices → Google Sheet (fast; keeps Sheets hot for features)
       {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
-
-      # Features: write tiered rows into DB from Google Sheets
-      # gold (and premium) – every 5 minutes
-      {"*/5 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :gold]}},
-      {"*/5 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :gold]}},
-
-      # silver – every 10 minutes
-      {"*/10 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :silver]}},
-      {"*/10 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :silver]}},
-
-      # copper – every 20 minutes
-      {"*/20 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :copper]}},
-      {"*/20 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :copper]}},
-
-      # free (legacy) – keep hourly for non-patrons/frontpage caches
-      {"@hourly", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.Table, :free]}},
-      {"1 * * * *", {FastApi.Sync.Features, :execute, [FastApi.Schemas.Fast.DetailTable, :free]}},
-
-      # existing maintenance/patreon/public/indexer
+      {"*/5 * * * *", {FastApi.Sync.Features, :execute_cycle, []}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
