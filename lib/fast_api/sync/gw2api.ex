@@ -118,7 +118,7 @@ defmodule FastApi.Sync.GW2API do
           []
       end)
 
-    {rows_changed, {zeroed_bound_no_vendor, changed_ids}} =
+    {rows_changed, {_zeroed_bound_no_vendor, changed_ids}} =
       pairs
       |> Enum.map_reduce({0, MapSet.new()}, fn
         {%{id: id, vendor_value: vendor, buy_old: buy_old, sell_old: sell_old},
@@ -172,8 +172,6 @@ defmodule FastApi.Sync.GW2API do
 
         acc + count
       end)
-
-    dt = mono_ms() - t0
 
     {:ok, %{updated: updated, changed_ids: changed_ids}}
   end
