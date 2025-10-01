@@ -126,6 +126,9 @@ defmodule FastApi.Schemas.Fast do
   defmodule Feature do
     @moduledoc false
     use Ecto.Schema
+
+    @compile {:no_warn_undefined, FastApi.Schemas.Fast.Page}
+
     @derive {Jason.Encoder, only: [:name, :pages]}
     schema "features" do
       field(:name, :string)
@@ -139,6 +142,9 @@ defmodule FastApi.Schemas.Fast do
     @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
+
+    @compile {:no_warn_undefined, FastApi.Schemas.Fast.Page}
+
     @derive {Jason.Encoder, only: [:description, :name, :order, :rows, :restrictions]}
     schema "tables" do
       field :description, :string
@@ -148,6 +154,7 @@ defmodule FastApi.Schemas.Fast do
       field :published, :boolean
       field :range, :string
 
+      # legacy + new tiered payloads
       field :rows, :string
       field :rows_copper, :string
       field :rows_silver, :string
@@ -168,6 +175,9 @@ defmodule FastApi.Schemas.Fast do
     @moduledoc false
     use Ecto.Schema
     import Ecto.Changeset
+
+    @compile {:no_warn_undefined, FastApi.Schemas.Fast.DetailFeature}
+
     @derive {Jason.Encoder, only: [:description, :key, :name, :rows]}
     schema "detail_tables" do
       field(:description, :string)
@@ -176,6 +186,7 @@ defmodule FastApi.Schemas.Fast do
       field(:name, :string)
       field(:range, :string)
 
+      # legacy + new tiered payloads
       field(:rows, :string)
       field(:rows_copper, :string)
       field(:rows_silver, :string)
@@ -194,6 +205,9 @@ defmodule FastApi.Schemas.Fast do
   defmodule DetailFeature do
     @moduledoc false
     use Ecto.Schema
+
+    @compile {:no_warn_undefined, FastApi.Schemas.Fast.DetailTable}
+
     @derive {Jason.Encoder, only: [:name, :detail_tables]}
     schema "detail_features" do
       field(:name, :string)
@@ -206,6 +220,10 @@ defmodule FastApi.Schemas.Fast do
   defmodule Page do
     @moduledoc false
     use Ecto.Schema
+
+    @compile {:no_warn_undefined, FastApi.Schemas.Fast.Feature}
+    @compile {:no_warn_undefined, FastApi.Schemas.Fast.Table}
+
     @derive {Jason.Encoder, only: [:name, :tables]}
     schema "pages" do
       belongs_to(:feature, FastApi.Schemas.Fast.Feature)
