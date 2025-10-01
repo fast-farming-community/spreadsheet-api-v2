@@ -17,15 +17,25 @@ defmodule FastApiWeb.Router do
     plug FastApi.PlugAttack
   end
 
-  # - verifies the header
-  # - loads resource/claims, read role
-  # - assign :role and :tier for downstream controllers
+  # Strict auth: token required
   pipeline :secured do
     plug FastApi.Auth.Pipeline
     plug Guardian.Plug.LoadResource, allow_blank: false
     plug FastApiWeb.Plugs.AssignTier
   end
 
+  # Optional auth: no token -> acts as free; with token -> honors role/tier
+  pipeline :optional_auth do
+    plug Guardian.Plug.VerifyHeader,
+      scheme: "Bearer",
+      claims: %{"iss" => "fast_api"},
+      allow_blank: true
+
+    plug Guardian.Plug.LoadResource, allow_blank: true
+    plug FastApiWeb.Plugs.AssignTier
+  end
+
+  # -------- Auth endpoints --------
   scope "/api/v1/auth", FastApiWeb do
     pipe_through [:api, :throttle]
 
@@ -38,8 +48,9 @@ defmodule FastApiWeb.Router do
     post "/change-password", UserController, :change_password
   end
 
+  # -------- Public / optional-auth GETs (no token required) --------
   scope "/api/v1", FastApiWeb do
-    pipe_through :secured
+    pipe_through [:api, :throttle, :optional_auth]
 
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds
@@ -51,6 +62,11 @@ defmodule FastApiWeb.Router do
 
     get "/metadata", MetaController, :index
     get "/metadata/indexes", MetaController, :index
+  end
+
+  # -------- Tiered data (requires token) --------
+  scope "/api/v1", FastApiWeb do
+    pipe_through [:api, :throttle, :secured]
 
     get "/details/:module/:collection/:item", DetailController, :get_item_page
     get "/:module/:collection", FeatureController, :get_page
