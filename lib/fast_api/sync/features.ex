@@ -10,34 +10,24 @@ defmodule FastApi.Sync.Features do
   @spreadsheet_id "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
   @batch_size 80
 
-  # retry/timeouts
-  @max_retries 3               # task timeout/retry
-  @backoff_attempts 5          # 429 backoff attempts
-  @backoff_base_ms 400         # ~0.4s, then exponential
+  @max_retries 3
+  @backoff_attempts 5
+  @backoff_base_ms 400
 
-  # cycle persistence (once per 5m run)
   @cycle_meta_key "features_cycle"
   @cycle_field "run_counter"
 
   @type tier :: :free | :copper | :silver | :gold
 
-  @doc """
-  Run every 5 minutes via Quantum.
-
-  Tiers per run (n = 1-based counter persisted in `metadata`):
-    - every run: gold
-    - every 2nd: + silver
-    - every 4th: + copper
-    - every 12th: + free
-  """
   def execute_cycle() do
-    n = next_cycle_number()  # now returns an integer
+    now = DateTime.utc_now()
+    minute = now.minute
 
     tiers =
       [:gold]
-      |> then(fn acc -> if rem(n, 2)  == 0, do: [:silver | acc], else: acc end)
-      |> then(fn acc -> if rem(n, 4)  == 0, do: [:copper | acc], else: acc end)
-      |> then(fn acc -> if rem(n, 12) == 0, do: [:free   | acc], else: acc end)
+      |> then(fn acc -> if rem(minute, 10) == 0, do: [:silver | acc], else: acc end)
+      |> then(fn acc -> if rem(minute, 20) == 0, do: [:copper | acc], else: acc end)
+      |> then(fn acc -> if minute == 0,          do: [:free   | acc], else: acc end)
       |> Enum.reverse()
 
     for tier <- tiers do
@@ -50,9 +40,6 @@ defmodule FastApi.Sync.Features do
     :ok
   end
 
-  @doc """
-  Execute a single tier sync for a given schema (Fast.Table or Fast.DetailTable).
-  """
   def execute(repo, tier \\ :free) do
     repo_tag = metadata_name(repo)
     t0 = System.monotonic_time(:millisecond)
@@ -190,7 +177,7 @@ defmodule FastApi.Sync.Features do
       {:ok, resp} ->
         {:ok, resp}
 
-      {:error, %Tesla.Env{status: 429} = env} ->
+      {:error, %Tesla.Env{status: 429}} ->
         wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
         Logger.warning(
           "Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT_EXCEEDED; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})"
@@ -271,7 +258,6 @@ defmodule FastApi.Sync.Features do
           end
       end
 
-    # ensure "updated_at" is a map
     data_map =
       Map.update(base_map, "updated_at", %{}, fn v ->
         if is_map(v), do: v, else: %{}
@@ -304,7 +290,6 @@ defmodule FastApi.Sync.Features do
         end
     end
   end
-
 
   defp log_and_raise(table, reason, context) do
     label = table_label(table)
