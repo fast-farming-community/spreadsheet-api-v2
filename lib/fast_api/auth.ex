@@ -41,6 +41,10 @@ defmodule FastApi.Auth do
     user |> Repo.preload(:role) |> User.changeset(role, :role) |> Repo.update()
   end
 
+  def update_profile(%User{} = user, params) do
+    user |> User.changeset(params, :profile) |> Repo.update()
+  end
+
   def delete_unverified() do
     Repo.delete_all(
       from u in User,

@@ -21,7 +21,6 @@ defmodule FastApiWeb.UserController do
            Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
       cond do
         not is_binary(user.password) or user.password == "" ->
-          # Account has no local password set — fail cleanly and timing-safe
           Bcrypt.no_user_verify()
           conn
           |> Plug.Conn.put_status(:unauthorized)
@@ -108,7 +107,6 @@ defmodule FastApiWeb.UserController do
             end
 
           _ ->
-            # User exists but has no password set
             Bcrypt.no_user_verify()
             conn
             |> Plug.Conn.put_status(:unauthorized)
@@ -116,7 +114,6 @@ defmodule FastApiWeb.UserController do
         end
 
       _ ->
-        # Unknown user — keep timing similar
         Bcrypt.no_user_verify()
         conn
         |> Plug.Conn.put_status(:unauthorized)
@@ -136,6 +133,99 @@ defmodule FastApiWeb.UserController do
         |> json(%{error: "Invalid or Expired Refresh Token"})
     end
   end
+
+  def ign(conn, _params) do
+    token =
+      Guardian.Plug.current_token(conn) ||
+        (get_req_header(conn, "authorization")
+         |> List.first()
+         |> case do
+              "Bearer " <> t -> t
+              t when is_binary(t) -> t
+              _ -> nil
+            end)
+
+    with {:ok, user, _claims} <-
+           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
+      role = Auth.get_user_role(user)
+      json(conn, %{
+        email: user.email,
+        role: role,
+        api_keys: user.api_keys || %{},
+        ingame_name: user.ingame_name || nil
+      })
+    else
+      _ ->
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+        |> json(%{error: "Invalid or missing access token"})
+    end
+  end
+
+  def update_profile(conn, params) do
+    token =
+      Guardian.Plug.current_token(conn) ||
+        (get_req_header(conn, "authorization")
+         |> List.first()
+         |> case do
+              "Bearer " <> t -> t
+              t when is_binary(t) -> t
+              _ -> nil
+            end)
+
+    with {:ok, user, _claims} <-
+           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}),
+         {:ok, %User{} = updated} <- Auth.update_profile(user, sanitize_profile_params(params)) do
+      role = Auth.get_user_role(updated)
+      json(conn, %{
+        email: updated.email,
+        role: role,
+        api_keys: updated.api_keys || %{},
+        ingame_name: updated.ingame_name || nil
+      })
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> Plug.Conn.put_status(:bad_request)
+        |> json(%{errors: EctoUtils.get_errors(changeset)})
+
+      _ ->
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+        |> json(%{error: "Invalid or missing access token"})
+    end
+  end
+
+  defp sanitize_profile_params(params) when is_map(params) do
+    api_keys =
+      case Map.get(params, "api_keys") do
+        m when is_map(m) ->
+          m
+          |> Enum.reduce(%{}, fn
+            {k, v}, acc when is_binary(k) and is_binary(v) ->
+              Map.put(acc, k, v)
+            {k, v}, acc ->
+              acc
+          end)
+
+        _ -> nil
+      end
+
+    ingame_name =
+      case Map.get(params, "ingame_name") do
+        s when is_binary(s) and String.trim(s) != "" -> String.trim(s)
+        _ -> nil
+      end
+
+    %{}
+    |> maybe_put("api_keys", api_keys)
+    |> maybe_put("ingame_name", ingame_name)
+  end
+
+  defp sanitize_profile_params(_), do: %{}
+
+  defp maybe_put(map, _k, nil), do: map
+  defp maybe_put(map, k, v), do: Map.put(map, k, v)
 
   defp login_success(conn, user) do
     {:ok, access, _} = Auth.Token.access_token(user)

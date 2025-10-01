@@ -25,6 +25,10 @@ defmodule FastApi.Schemas.Auth do
       field :token, :string, default: Ecto.UUID.generate()
       field :verified, :boolean, default: false
 
+      # NEW
+      field :api_keys, :map, default: %{}
+      field :ingame_name, :string
+
       timestamps()
     end
 
@@ -57,6 +61,13 @@ defmodule FastApi.Schemas.Auth do
       |> put_hash()
     end
 
+    # Optional profile updater (api_keys + ingame_name)
+    def changeset(user, params, :profile) do
+      user
+      |> cast(params, [:api_keys, :ingame_name])
+      |> validate_api_keys()
+    end
+
     def changeset(user, role, :role) do
       user
       |> cast(%{}, [])
@@ -85,6 +96,34 @@ defmodule FastApi.Schemas.Auth do
         message: "Password must contain a symbol"
       )
       |> validate_confirmation(:password, required: true)
+    end
+
+    # API key validation (map of strings)
+    defp validate_api_keys(%Ecto.Changeset{} = changeset) do
+      validate_change(changeset, :api_keys, fn :api_keys, value ->
+        cond do
+          value == nil ->
+            []
+
+          is_map(value) ->
+            regex = ~r/^[A-Za-z0-9-]{20,128}$/
+            bad =
+              value
+              |> Enum.reject(fn
+                {_k, v} when is_binary(v) and v =~ regex -> true
+                _ -> false
+              end)
+
+            if bad == [] do
+              []
+            else
+              [{:api_keys, "All API keys must be strings that look like valid keys"}]
+            end
+
+          true ->
+            [{:api_keys, "must be a map of strings"}]
+        end
+      end)
     end
 
     defp put_hash(%Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset) do
