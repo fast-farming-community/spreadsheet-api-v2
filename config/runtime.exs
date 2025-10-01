@@ -1,3 +1,4 @@
+# config/runtime.exs
 import Config
 
 if System.get_env("PHX_SERVER") do
@@ -17,7 +18,14 @@ if config_env() == :prod do
 
   config :fast_api, FastApiWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [ip: {0,0,0,0,0,0,0,0}, port: port],
+    http: [
+      ip: {0,0,0,0,0,0,0,0},
+      port: port,
+      protocol_options: [
+        request_timeout: 30_000,
+        idle_timeout: 30_000
+      ]
+    ],
     secret_key_base: secret_key_base
 
   config :fast_api, FastApi.Auth.Token,
@@ -41,7 +49,6 @@ if config_env() == :prod do
 
   config :fast_api, FastApi.Scheduler,
     jobs: [
-      # Prices → Google Sheet (fast; keeps Sheets hot for features)
       {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
       {"*/5 * * * *", {FastApi.Sync.Features, :execute_cycle, []}},

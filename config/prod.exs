@@ -1,7 +1,6 @@
 import Config
 
 config :fast_api, FastApiWeb.Endpoint,
-  url: [host: "api.farming-community.eu", port: 40000],
   cache_static_manifest: "priv/static/cache_manifest.json"
 
 config :cors_plug,
@@ -10,7 +9,7 @@ config :cors_plug,
     "https://farming-community.eu",
     "https://www.farming-community.eu"
   ],
-  methods: ["GET"]
+  methods: ["GET", "POST", "OPTIONS"]
 
 config :fast_api,
   throttle_request_limit: 10
