@@ -10,15 +10,18 @@ defmodule FastApiWeb.Plugs.AssignTier do
     role   = Map.get(claims, "role", "free")
 
     tier =
-      case role do
-        "gold"   -> :gold
-        "silver" -> :silver
-        "copper" -> :copper
-        _        -> :free
-      end
+        case role do
+        "gold"    -> :gold
+        "silver"  -> :silver
+        "copper"  -> :copper
+        "premium" -> :gold
+        "admin"   -> :gold
+        _         -> :free
+        end
 
     conn
     |> assign(:role, role)
     |> assign(:tier, tier)
-  end
+    end
+
 end
