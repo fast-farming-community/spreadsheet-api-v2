@@ -193,4 +193,16 @@ defmodule FastApi.GW2.Client do
 
   def currencies(ids) when is_list(ids),
     do: chunked_get_list("/v2/currencies", ids, @chunk_size_currencies)
+
+  def account(key) when is_binary(key) do
+    with_retry(fn -> get("/v2/account", token: key) end)
+    |> case do
+      {:ok, 200, %{"name" => name} = json} ->
+        {:ok, json} # includes full GW2 account, but at least `name`
+      {:ok, status, body} ->
+        {:error, {:unexpected_status, status, body}}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 end

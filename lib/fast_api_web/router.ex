@@ -43,9 +43,9 @@ defmodule FastApiWeb.Router do
     post "/validate-key",          TrackerController, :validate_key
     post "/characters",            TrackerController, :characters
     post "/characters/inventory",  TrackerController, :character_inventory
-    # NEW: bulk inventories endpoint (fan-out with bounded concurrency)
     post "/characters/inventories", TrackerController, :characters_inventories
 
+    post "/account/info",          TrackerController, :account
     post "/account/bank",          TrackerController, :account_bank
     post "/account/materials",     TrackerController, :account_materials
     post "/account/inventory",     TrackerController, :account_inventory

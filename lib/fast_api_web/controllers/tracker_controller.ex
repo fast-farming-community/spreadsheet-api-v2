@@ -218,4 +218,15 @@ defmodule FastApiWeb.TrackerController do
 
   defp return_bad_request(conn, msg),
     do: conn |> put_status(:bad_request) |> json(%{error: msg})
+
+  def account(conn, %{"key" => key}) do
+    case FastApi.GW2.Client.account(key) do
+      {:ok, %{"name" => name} = acc} ->
+        json(conn, %{ok: true, name: name, account: acc})
+      {:error, {:unauthorized, _}} ->
+        conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid_key"})
+      {:error, reason} ->
+        conn |> put_status(:bad_gateway) |> json(%{ok: false, error: inspect(reason)})
+    end
+  end
 end
