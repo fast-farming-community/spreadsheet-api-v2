@@ -135,31 +135,31 @@ defmodule FastApiWeb.UserController do
   end
 
   def me(conn, _params) do
-    token =
-      Guardian.Plug.current_token(conn) ||
-        (get_req_header(conn, "authorization")
-         |> List.first()
-         |> case do
-              "Bearer " <> t -> t
-              t when is_binary(t) -> t
-              _ -> nil
-            end)
+    user = Guardian.Plug.current_resource(conn)
 
-    with {:ok, user, _claims} <-
-           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
-      role = Auth.get_user_role(user)
-      json(conn, %{
-        email: user.email,
-        role: role,
-        api_keys: user.api_keys || %{},
-        ingame_name: user.ingame_name || nil
-      })
-    else
-      _ ->
-        conn
-        |> Plug.Conn.put_status(:unauthorized)
-        |> json(%{error: "Invalid or missing access token"})
-    end
+    {maybe_name, updated_user} =
+      case first_valid_key(user.api_keys) do
+        nil -> {user.ingame_name, user}
+        key ->
+          with {:ok, %{"name" => live_name}} <- FastApi.GW2.Client.account(key) do
+            cond do
+              is_nil(user.ingame_name) or user.ingame_name != live_name ->
+                {:ok, saved} = FastApi.Accounts.update_user(user, %{ingame_name: live_name})
+                {live_name, saved}
+              true ->
+                {user.ingame_name, user}
+            end
+          else
+            _ -> {user.ingame_name, user}
+          end
+      end
+
+    json(conn, %{
+      email: updated_user.email,
+      role: updated_user.role,
+      ingame_name: maybe_name,
+      api_keys: updated_user.api_keys
+    })
   end
 
   def update_profile(conn, params) do
