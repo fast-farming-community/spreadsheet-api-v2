@@ -33,7 +33,7 @@ defmodule FastApiWeb.Router do
 
     pipe_through :secured
     post "/change-password", UserController, :change_password
-    get  "/ign", UserController, :ign
+    get  "/me", UserController, :me
     post "/profile", UserController, :update_profile
   end
 

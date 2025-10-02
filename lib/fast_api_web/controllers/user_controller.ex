@@ -134,7 +134,7 @@ defmodule FastApiWeb.UserController do
     end
   end
 
-  def ign(conn, _params) do
+  def me(conn, _params) do
     token =
       Guardian.Plug.current_token(conn) ||
         (get_req_header(conn, "authorization")
