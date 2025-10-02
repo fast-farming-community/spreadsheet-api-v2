@@ -2,7 +2,6 @@ defmodule FastApi.GW2.Client do
   @moduledoc false
   @base "https://api.guildwars2.com"
 
-  # --- timeouts & batching knobs ---
   @connect_timeout 5_000
   @pool_timeout    5_000
   @receive_timeout 15_000
@@ -15,13 +14,15 @@ defmodule FastApi.GW2.Client do
   @retry_attempts  3
   @retry_base_ms   200
 
-  # -------- core request --------
-  defp finch_opts do
-    [
-      connect_timeout: @connect_timeout,
-      pool_timeout:    @pool_timeout,
-      receive_timeout: @receive_timeout
-    ]
+  defp finch_opts(extra \\ []) do
+    Keyword.merge(
+      [
+        connect_timeout: @connect_timeout,
+        pool_timeout:    @pool_timeout,
+        receive_timeout: @receive_timeout
+      ],
+      extra
+    )
   end
 
   def get(path, opts \\ []) do
@@ -33,9 +34,11 @@ defmodule FastApi.GW2.Client do
         token -> [{"authorization", "Bearer " <> String.trim(token)}]
       end
 
+    http_opts = Keyword.drop(opts, [:token])
+
     req = Finch.build(:get, url, headers)
 
-    case Finch.request(req, FastApi.Finch, finch_opts()) do
+    case Finch.request(req, FastApi.Finch, finch_opts(http_opts)) do
       {:ok, %Finch.Response{status: status, body: body}} ->
         case Jason.decode(body) do
           {:ok, json} -> {:ok, status, json}
@@ -47,18 +50,17 @@ defmodule FastApi.GW2.Client do
     end
   end
 
-  # -------- retry wrapper --------
   defp with_retry(fun, attempts \\ @retry_attempts)
-
   defp with_retry(fun, attempts) when attempts > 1 do
     case fun.() do
-      {:ok, _status, _} = ok -> ok
-      {:error, {:transport, _} = err} ->
+      {:ok, status, _} when status in 500..599 ->
         backoff(attempts)
         with_retry(fun, attempts - 1)
-      {:ok, status, _} = resp when status in 500..599 ->
+
+      {:error, {:transport, _}} ->
         backoff(attempts)
         with_retry(fun, attempts - 1)
+
       other ->
         other
     end
@@ -67,12 +69,10 @@ defmodule FastApi.GW2.Client do
   defp with_retry(fun, _attempts), do: fun.()
 
   defp backoff(attempts_left) do
-    # simple exponential-ish backoff
     step = @retry_attempts - attempts_left + 1
     :timer.sleep(@retry_base_ms * step)
   end
 
-  # -------- helpers for chunked list endpoints --------
   defp chunked_get_list(path_base, ids, chunk_size) when is_list(ids) do
     ids
     |> Enum.map(&to_string/1)
@@ -90,39 +90,20 @@ defmodule FastApi.GW2.Client do
         {:ok, acc ++ list}
 
       {:ok, {:ok, 206, list}}, {:ok, acc} when is_list(list) ->
-        # GW2 sometimes replies 206 for partial content; still merge what we got
         {:ok, acc ++ list}
 
-      {:ok, {:ok, status, body}}, {:ok, acc} when status in 400..499 ->
-        # hard client error for this chunk; keep going but remember failure
-        {:partial_error, acc, {:unexpected_status, status, body}}
+      {:ok, _}, acc ->
+        acc
 
-      {:ok, {:error, reason}}, {:ok, acc} ->
-        {:partial_error, acc, reason}
-
-      {:ok, other}, {:ok, acc} ->
-        {:partial_error, acc, {:unknown, other}}
-
-      # if we already had a partial error, keep merging successes but retain the error tag
-      {:ok, {:ok, 200, list}}, {:partial_error, acc, err} when is_list(list) ->
-        {:partial_error, acc ++ list, err}
-
-      _chunk_result, error_acc ->
-        error_acc
+      _, acc ->
+        acc
     end)
     |> case do
-      {:ok, list} ->
-        {:ok, list}
-
-      {:partial_error, list, err} ->
-        # surface partial results but mark the error for the caller if needed;
-        # here we choose to return {:ok, list} so the controller can still respond 200.
-        # If you prefer to fail the whole request, switch to: {:error, err}
-        {:ok, list}
+      {:ok, list} -> {:ok, list}
+      other -> other
     end
   end
 
-  # -------- token + account endpoints (single calls) --------
   @doc """
   Validate a GW2 API key by calling /v2/tokeninfo.
   Returns {:ok, %{name: ..., permissions: [...]}} or {:error, reason}
@@ -189,13 +170,14 @@ defmodule FastApi.GW2.Client do
     end
   end
 
-  def character_inventory(key, character_name) when is_binary(key) and is_binary(character_name) do
+  def character_inventory(key, character_name, opts \\ [])
+      when is_binary(key) and is_binary(character_name) and is_list(opts) do
     encoded =
       character_name
       |> String.trim()
       |> URI.encode(&URI.char_unreserved?/1)
 
-    with_retry(fn -> get("/v2/characters/#{encoded}/inventory", token: key) end)
+    with_retry(fn -> get("/v2/characters/#{encoded}/inventory", Keyword.put(opts, :token, key)) end)
     |> case do
       {:ok, 200, json} when is_map(json) -> {:ok, json}
       {:ok, status, body}                -> {:error, {:unexpected_status, status, body}}
@@ -203,7 +185,6 @@ defmodule FastApi.GW2.Client do
     end
   end
 
-  # -------- catalog endpoints (chunked + retries) --------
   def items(ids) when is_list(ids),
     do: chunked_get_list("/v2/items", ids, @chunk_size_items)
 
