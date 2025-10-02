@@ -3,6 +3,19 @@ defmodule FastApiWeb.TrackerController do
 
   @required_perms ~w(characters wallet inventories)
 
+  defp encodable(term)
+  defp encodable(term) when is_binary(term) or is_map(term) or is_list(term) or
+                            is_integer(term) or is_float(term) or is_boolean(term) or is_nil(term),
+    do: term
+  defp encodable(%{__struct__: _} = struct) do
+    try do
+      Exception.message(struct)
+    rescue
+      _ -> inspect(struct, limit: 200)
+    end
+  end
+  defp encodable(term), do: inspect(term, limit: 200)
+
   def validate_key(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.tokeninfo(key) do
       {:ok, %{name: name, permissions: perms}} ->
@@ -20,10 +33,10 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_request) |> json(%{ok: false, error: "Invalid API key"})
 
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{ok: false, error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{ok: false, error: "GW2 API error", status: status, upstream: encodable(body)})
 
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{ok: false, error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{ok: false, error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -34,9 +47,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.characters(key) do
       {:ok, names} -> json(conn, names)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -47,9 +60,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.account_bank(key) do
       {:ok, items} -> json(conn, items)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -60,9 +73,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.account_materials(key) do
       {:ok, materials} -> json(conn, materials)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -73,9 +86,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.account_inventory(key) do
       {:ok, shared} -> json(conn, shared)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -86,9 +99,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.account_wallet(key) do
       {:ok, wallet} -> json(conn, wallet)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -100,9 +113,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.character_inventory(key, character) do
       {:ok, inv} -> json(conn, inv)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
 
@@ -142,7 +155,7 @@ defmodule FastApiWeb.TrackerController do
               {[Map.put(inv, "character", name) | oks], errs}
 
             {:ok, {:error, reason}} ->
-              {oks, [%{character: name, error: inspect(reason)} | errs]}
+              {oks, [%{character: name, error: encodable(reason)} | errs]}
 
             {:exit, _} ->
               {oks, [%{character: name, error: "timeout"} | errs]}
@@ -162,9 +175,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.items(ids) do
       {:ok, list} -> json(conn, list)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
   def items(conn, _),
@@ -176,9 +189,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.prices(ids) do
       {:ok, list} -> json(conn, list)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
   def prices(conn, _),
@@ -190,9 +203,9 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.currencies(ids) do
       {:ok, list} -> json(conn, list)
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: body})
+        conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: info})
+        conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
     end
   end
   def currencies(conn, _),
