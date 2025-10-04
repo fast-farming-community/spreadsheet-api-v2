@@ -17,7 +17,7 @@ defmodule FastApi.Search do
           ilike(p.name, ^like) or
           ilike(t.name, ^like) or
           ilike(t.description, ^like) or
-          ilike(t.rows, ^like),
+          ilike(fragment("?::text", t.rows), ^like),   # ← cast rows to text
         select: %{
           module: f.name,
           collection: p.name,
@@ -38,7 +38,7 @@ defmodule FastApi.Search do
 
   defp to_api(%{module: m, collection: c, page: page, table: table, snippet: snip}) do
     %{
-      route: "#{m}/#{c}",
+      route: "#{m}/#{c}",   # no trailing slash
       page: page,
       table: table,
       snippet: snip
@@ -47,7 +47,6 @@ defmodule FastApi.Search do
 
   defp add_score_and_snippet(row, q) do
     qd = String.downcase(q)
-
     f1 = row.page || ""
     f2 = row.table || ""
     f3 = row.description || ""
@@ -61,7 +60,6 @@ defmodule FastApi.Search do
       contains(f3, qd) * 3 +
       contains(f4, qd) * 2
 
-    # Build a user-friendly snippet; avoid technical JSON keys
     snippet =
       cond do
         contains(f2, qd) -> snippet(f2, q)
@@ -92,7 +90,7 @@ defmodule FastApi.Search do
     end
   end
 
-  # NEW: only consider user-facing keys for snippet (no Key/Category)
+  # Only consider user-facing keys for snippet (no Key/Category)
   defp snippet_from_rows_user_friendly(rows, q) when is_binary(rows) do
     with {:ok, list} <- Jason.decode(rows),
          true <- is_list(list) do
@@ -101,11 +99,9 @@ defmodule FastApi.Search do
       best =
         Enum.find_value(list, fn row ->
           if is_map(row) do
-            # Prefer Name if it matches; otherwise fall back to the allowlist order
             cond do
               is_binary(row["Name"]) and String.contains?(String.downcase(row["Name"]), qd) ->
                 row["Name"]
-
               true ->
                 Enum.find_value(@snippet_json_keys, fn k ->
                   v = row[k]
@@ -117,10 +113,7 @@ defmodule FastApi.Search do
           end
         end)
 
-      cond do
-        is_binary(best) -> snippet(best, q)
-        true            -> nil
-      end
+      if is_binary(best), do: snippet(best, q), else: nil
     else
       _ -> nil
     end
