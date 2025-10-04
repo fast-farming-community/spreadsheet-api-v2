@@ -17,7 +17,7 @@ defmodule FastApi.Search do
           ilike(p.name, ^like) or
           ilike(t.name, ^like) or
           ilike(t.description, ^like) or
-          ilike(fragment("?::text", t.rows), ^like),   # ← cast rows to text
+          ilike(fragment("?::text", t.rows), ^like),
         select: %{
           module: f.name,
           collection: p.name,
@@ -53,18 +53,18 @@ defmodule FastApi.Search do
     f4 = row.rows || ""
 
     score =
-      starts_with(f1, qd) * 8 +
-      starts_with(f2, qd) * 6 +
-      contains(f1, qd) * 5 +
-      contains(f2, qd) * 4 +
-      contains(f3, qd) * 3 +
-      contains(f4, qd) * 2
+      starts_with_score(f1, qd) * 8 +
+      starts_with_score(f2, qd) * 6 +
+      contains_score(f1, qd) * 5 +
+      contains_score(f2, qd) * 4 +
+      contains_score(f3, qd) * 3 +
+      contains_score(f4, qd) * 2
 
     snippet =
       cond do
-        contains(f2, qd) -> snippet(f2, q)
-        contains(f3, qd) -> snippet(f3, q)
-        true             -> snippet_from_rows_user_friendly(f4, q)
+        contains?(f2, qd) -> snippet(f2, q)
+        contains?(f3, qd) -> snippet(f3, q)
+        true              -> snippet_from_rows_user_friendly(f4, q)
       end
 
     row
@@ -72,12 +72,21 @@ defmodule FastApi.Search do
     |> Map.put(:snippet, snippet)
   end
 
-  defp contains(text, qd), do: is_binary(text) and String.contains?(String.downcase(text), qd)
-  defp starts_with(text, qd), do: (is_binary(text) and String.starts_with?(String.downcase(text), qd) && 1) || 0
+  # --- scoring helpers (numeric 0/1) ---
+  defp starts_with_score(text, qd),
+    do: if(is_binary(text) and String.starts_with?(String.downcase(text), qd), do: 1, else: 0)
 
+  defp contains?(text, qd),
+    do: is_binary(text) and String.contains?(String.downcase(text), qd)
+
+  defp contains_score(text, qd),
+    do: if(contains?(text, qd), do: 1, else: 0)
+
+  # --- snippet helpers ---
   defp snippet(text, q, pre \\ 24, len \\ 64) do
     td = String.downcase(text || "")
     qd = String.downcase(q)
+
     case :binary.match(td, qd) do
       {idx, _} ->
         from = max(idx - pre, 0)
@@ -118,5 +127,6 @@ defmodule FastApi.Search do
       _ -> nil
     end
   end
+
   defp snippet_from_rows_user_friendly(_, _), do: nil
 end
