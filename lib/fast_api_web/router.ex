@@ -74,6 +74,7 @@ defmodule FastApiWeb.Router do
   scope "/api/v1", FastApiWeb do
     pipe_through [:api, :optional_auth]
 
+    get "/search", SearchController, :search
     get "/details/:module/:collection/:item", DetailController, :get_item_page
     get "/:module/:collection", FeatureController, :get_page
   end
