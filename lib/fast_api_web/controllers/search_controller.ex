@@ -9,11 +9,8 @@ defmodule FastApiWeb.SearchController do
     else
       limit =
         params["limit"]
-        |> case do
-          nil -> 12
-          s   -> elem(Integer.parse(s || ""), 0) || 12
-        end
-        |> max(1) |> min(50)
+        |> parse_int(12)
+        |> clamp(1, 50)
 
       items = Search.search(q, limit)
       json(conn, %{items: items})
@@ -21,4 +18,17 @@ defmodule FastApiWeb.SearchController do
   end
 
   def search(conn, _), do: json(conn, %{items: []})
+
+  defp parse_int(nil, default), do: default
+  defp parse_int(s, default) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> default
+    end
+  end
+  defp parse_int(_, default), do: default
+
+  defp clamp(n, min, max) when n < min, do: min
+  defp clamp(n, min, max) when n > max, do: max
+  defp clamp(n, _min, _max), do: n
 end
