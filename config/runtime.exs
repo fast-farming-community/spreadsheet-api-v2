@@ -55,8 +55,7 @@ if config_env() == :prod do
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
-      {"@hourly", {FastApi.Sync.Public, :execute, []}},
-      {"@daily",  {FastApi.Sync.Indexer, :execute, []}}
+      {"@hourly", {FastApi.Sync.Public, :execute, []}}
     ]
 
   # ## Configuring the mailer

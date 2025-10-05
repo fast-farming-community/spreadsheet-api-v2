@@ -68,7 +68,6 @@ defmodule FastApiWeb.Router do
     get "/guides", ContentController, :guides
 
     get "/metadata", MetaController, :index
-    get "/metadata/indexes", MetaController, :index
   end
 
   scope "/api/v1", FastApiWeb do
