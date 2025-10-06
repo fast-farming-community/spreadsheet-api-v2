@@ -66,15 +66,9 @@ defmodule FastApiWeb.Router do
     get "/website-todos", ContentController, :todos
     get "/contributors", ContentController, :contributors
     get "/guides", ContentController, :guides
-
-    get "/health", FastApiWeb.HealthController, :show
-    get "/health/stream", FastApiWeb.HealthController, :stream
+    get "/health", HealthController, :show
+    get "/health/stream", HealthController, :stream
     get "/metadata", MetaController, :index
-  end
-
-  scope "/api/v1", FastApiWeb do
-    pipe_through [:api, :optional_auth]
-
     get "/search", SearchController, :search
     get "/details/:module/:collection/:item", DetailController, :get_item_page
     get "/:module/:collection", FeatureController, :get_page
