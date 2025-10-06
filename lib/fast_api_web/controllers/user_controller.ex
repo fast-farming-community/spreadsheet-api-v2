@@ -192,33 +192,34 @@ defmodule FastApiWeb.UserController do
     token =
       Guardian.Plug.current_token(conn) ||
         (get_req_header(conn, "authorization")
-         |> List.first()
-         |> case do
+        |> List.first()
+        |> case do
               "Bearer " <> t -> t
               t when is_binary(t) -> t
               _ -> nil
             end)
 
     with {:ok, user, _claims} <-
-           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}),
-         {:ok, %User{} = updated} <- Auth.update_profile(user, sanitize_profile_params(params)) do
-      role = Auth.get_user_role(updated)
-      json(conn, %{
-        email: updated.email,
-        role: role,
-        api_keys: updated.api_keys || %{},
-        ingame_name: updated.ingame_name || nil
-      })
-    else
-      {:error, %Ecto.Changeset{} = changeset} ->
-        conn
-        |> Plug.Conn.put_status(:bad_request)
-        |> json(%{errors: EctoUtils.get_errors(changeset)})
+          Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
+      case Auth.update_profile(user, sanitize_profile_params(params)) do
+        {:ok, %User{} = updated} ->
+          role = Auth.get_user_role(updated)
+          json(conn, %{
+            email: updated.email,
+            role: role,
+            api_keys: updated.api_keys || %{},
+            ingame_name: updated.ingame_name || nil
+          })
 
+        {:error, :unprocessable_entity, msg} ->
+          conn |> Plug.Conn.put_status(:unprocessable_entity) |> json(%{errors: [msg]})
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          conn |> Plug.Conn.put_status(:bad_request) |> json(%{errors: EctoUtils.get_errors(changeset)})
+      end
+    else
       _ ->
-        conn
-        |> Plug.Conn.put_status(:unauthorized)
-        |> json(%{error: "Invalid or missing access token"})
+        conn |> Plug.Conn.put_status(:unauthorized) |> json(%{error: "Invalid or missing access token"})
     end
   end
 
