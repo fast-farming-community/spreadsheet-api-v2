@@ -3,7 +3,6 @@ defmodule FastApiWeb.Plugs.AutoBan do
   import Plug.Conn
 
   @ban_table :fast_ip_banlist
-  @allow MapSet.new(~w(127.0.0.1 ::1))
 
   def init(opts), do: opts
   def call(%Plug.Conn{method: "OPTIONS"} = conn, _opts), do: conn
@@ -14,9 +13,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
 
     banned? =
       case :ets.info(@ban_table) do
-        :undefined ->
-          false
-
+        :undefined -> false
         _ ->
           try do
             case :ets.lookup(@ban_table, ip) do
