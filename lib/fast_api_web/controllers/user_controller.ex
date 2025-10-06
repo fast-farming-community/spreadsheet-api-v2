@@ -228,31 +228,35 @@ defmodule FastApiWeb.UserController do
       case Map.get(params, "api_keys") do
         m when is_map(m) ->
           Enum.reduce(m, %{}, fn
-            {k, v}, acc when is_binary(k) and is_binary(v) ->
-              Map.put(acc, k, v)
-            _kv, acc ->
-              acc
+            {k, v}, acc when is_binary(k) and is_binary(v) -> Map.put(acc, k, v)
+            _kv, acc -> acc
           end)
-
-        _ ->
-          nil
+        _ -> nil
       end
 
     ingame_name =
-      case Map.get(params, "ingame_name") do
-        s when is_binary(s) ->
+      case Map.fetch(params, "ingame_name") do
+        {:ok, s} when is_binary(s) ->
           trimmed = String.trim(s)
-          if trimmed == "", do: nil, else: trimmed
-        _ ->
-          nil
+          if trimmed == "", do: :__clear__, else: trimmed
+        _ -> :__absent__
       end
 
-    %{}
-    |> maybe_put("api_keys", api_keys)
-    |> maybe_put("ingame_name", ingame_name)
+    out = %{}
+    out = if api_keys != nil, do: Map.put(out, "api_keys", api_keys), else: out
+
+    out =
+      case ingame_name do
+        :__absent__ -> out                  # don't touch IGN
+        :__clear__  -> Map.put(out, "ingame_name", nil)  # explicit clear to NULL
+        v           -> Map.put(out, "ingame_name", v)    # set to provided value
+      end
+
+    out
   end
 
-defp sanitize_profile_params(_), do: %{}
+  defp sanitize_profile_params(_), do: %{}
+
 
   defp maybe_put(map, _k, nil), do: map
   defp maybe_put(map, k, v), do: Map.put(map, k, v)
