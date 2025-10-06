@@ -1,5 +1,6 @@
 defmodule FastApiWeb.HealthController do
   use FastApiWeb, :controller
+  import Plug.Conn
 
   @topic "health"
 
@@ -8,18 +9,19 @@ defmodule FastApiWeb.HealthController do
     json(conn, %{up: s.up, since: s.since, updated_at: s.updated_at, reason: s.reason})
   end
 
-  # text/event-stream endpoint
+  # === Server-Sent Events stream ===
   def stream(conn, _params) do
     conn =
       conn
-      |> put_resp_header("content-type", "text/event-stream")
-      |> put_resp_header("cache-control", "no-cache")
+      |> put_resp_header("content-type", "text/event-stream; charset=utf-8")
+      |> put_resp_header("cache-control", "no-cache, no-transform")
+      |> put_resp_header("x-accel-buffering", "no")
       |> put_resp_header("connection", "keep-alive")
       |> send_chunked(200)
 
     Phoenix.PubSub.subscribe(FastApi.PubSub, @topic)
 
-    # send initial snapshot
+    # initial snapshot
     {:ok, conn} = sse(conn, FastApi.Health.Server.get())
 
     # heartbeat every 25s to keep proxies happy
@@ -44,7 +46,7 @@ defmodule FastApiWeb.HealthController do
         end
     after
       60_000 ->
-        # safety timeout: still alive? send a ping
+        # safety ping to keep connection alive
         case chunk(conn, "event: ping\ndata: {}\n\n") do
           {:ok, conn} -> loop(conn, heartbeat)
           {:error, _} -> exit(:normal)
@@ -53,7 +55,11 @@ defmodule FastApiWeb.HealthController do
   end
 
   defp heartbeat_loop(parent) do
-    receive do after 25_000 -> :ok end
+    receive do
+    after
+      25_000 -> :ok
+    end
+
     send(parent, {:heartbeat})
     heartbeat_loop(parent)
   end

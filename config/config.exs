@@ -17,6 +17,7 @@ config :cors_plug,
   methods: ["GET", "POST", "OPTIONS"],
   headers: ["Authorization", "Content-Type"],
   expose: ["Content-Length"],
+  credentials: true,
   max_age: 86_400,
   send_preflight_response?: true
 
@@ -47,6 +48,10 @@ config :logger, :console,
 config :phoenix, :logger,
   level: :warning,
   filter_parameters: ["password", "token", "authorization"]
+
+config :mime, :types, %{
+  "text/event-stream" => ["event-stream"]
+}
 
 config :phoenix, :json_library, Jason
 
