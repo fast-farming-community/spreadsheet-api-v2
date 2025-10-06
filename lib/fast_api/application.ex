@@ -20,9 +20,18 @@ defmodule FastApi.Application do
       # Bigger pool to comfortably handle fan-out with max_concurrency.
       {Finch, name: FastApi.Finch, pools: %{default: [size: 50, count: 2]}},
 
+      # DB + scheduling + metrics
       FastApi.Repo,
       FastApi.Scheduler,
       FastApiWeb.Telemetry,
+
+      # PubSub for health broadcasts (SSE)
+      {Phoenix.PubSub, name: FastApi.PubSub},
+
+      # Backend health state (pushes updates to PubSub)
+      FastApi.Health.Server,
+
+      # HTTP endpoint last
       FastApiWeb.Endpoint
     ]
 

@@ -67,6 +67,8 @@ defmodule FastApiWeb.Router do
     get "/contributors", ContentController, :contributors
     get "/guides", ContentController, :guides
 
+    get "/health", FastApiWeb.HealthController, :show
+    get "/health/stream", FastApiWeb.HealthController, :stream
     get "/metadata", MetaController, :index
   end
 
