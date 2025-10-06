@@ -14,9 +14,6 @@ defmodule FastApi.Sync.Features do
   @backoff_attempts 5
   @backoff_base_ms 400
 
-  @cycle_meta_key "features_cycle"
-  @cycle_field "run_counter"
-
   @type tier :: :free | :copper | :silver | :gold
 
   def execute_cycle() do
@@ -313,37 +310,5 @@ defmodule FastApi.Sync.Features do
       |> Enum.reverse()
 
     if parts == [], do: inspect(table), else: Enum.join(parts, " ")
-  end
-
-  defp next_cycle_number() do
-    case Repo.transaction(fn ->
-          case Repo.get_by(Fast.Metadata, name: @cycle_meta_key) do
-            nil ->
-              data = %{@cycle_field => 1} |> Jason.encode!()
-              %Fast.Metadata{name: @cycle_meta_key}
-              |> Fast.Metadata.changeset(%{data: data})
-              |> Repo.insert!()
-              1
-
-            %Fast.Metadata{} = row ->
-              current =
-                case row.data && Jason.decode(row.data) do
-                  {:ok, %{@cycle_field => n}} when is_integer(n) -> n
-                  _ -> 0
-                end
-
-              next = current + 1
-              new_data = %{@cycle_field => next} |> Jason.encode!()
-
-              row
-              |> Fast.Metadata.changeset(%{data: new_data})
-              |> Repo.update!()
-
-              next
-          end
-        end) do
-      {:ok, n} -> n
-      {:error, _} -> 1
-    end
   end
 end

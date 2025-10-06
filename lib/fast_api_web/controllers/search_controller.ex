@@ -4,6 +4,7 @@ defmodule FastApiWeb.SearchController do
 
   def search(conn, %{"q" => q0} = params) do
     q = String.trim(q0 || "")
+
     if String.length(q) < 2 do
       json(conn, %{items: []})
     else
@@ -26,9 +27,10 @@ defmodule FastApiWeb.SearchController do
       :error -> default
     end
   end
+
   defp parse_int(_, default), do: default
 
-  defp clamp(n, min, max) when n < min, do: min
-  defp clamp(n, min, max) when n > max, do: max
+  defp clamp(n, min, _max) when n < min, do: min
+  defp clamp(n, _min, max) when n > max, do: max
   defp clamp(n, _min, _max), do: n
 end

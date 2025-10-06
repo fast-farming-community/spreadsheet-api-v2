@@ -93,7 +93,6 @@ defmodule FastApi.Sync.GW2API do
 
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
-    t0 = mono_ms()
     ensure_flags_cache!()
 
     items =

@@ -14,7 +14,7 @@ defmodule FastApi.GW2.Client do
   @retry_attempts  3
   @retry_base_ms   200
 
-  defp finch_opts(extra \\ []) do
+  defp finch_opts(extra) do
     Keyword.merge(
       [
         connect_timeout: @connect_timeout,
@@ -35,7 +35,6 @@ defmodule FastApi.GW2.Client do
       end
 
     http_opts = Keyword.drop(opts, [:token])
-
     req = Finch.build(:get, url, headers)
 
     case Finch.request(req, FastApi.Finch, finch_opts(http_opts)) do
@@ -86,17 +85,10 @@ defmodule FastApi.GW2.Client do
       timeout: @receive_timeout + 5_000
     )
     |> Enum.reduce({:ok, []}, fn
-      {:ok, {:ok, 200, list}}, {:ok, acc} when is_list(list) ->
-        {:ok, acc ++ list}
-
-      {:ok, {:ok, 206, list}}, {:ok, acc} when is_list(list) ->
-        {:ok, acc ++ list}
-
-      {:ok, _}, acc ->
-        acc
-
-      _, acc ->
-        acc
+      {:ok, {:ok, 200, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
+      {:ok, {:ok, 206, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
+      {:ok, _}, acc -> acc
+      _, acc -> acc
     end)
     |> case do
       {:ok, list} -> {:ok, list}
@@ -197,12 +189,9 @@ defmodule FastApi.GW2.Client do
   def account(key) when is_binary(key) do
     with_retry(fn -> get("/v2/account", token: key) end)
     |> case do
-      {:ok, 200, %{"name" => name} = json} ->
-        {:ok, json} # includes full GW2 account, but at least `name`
-      {:ok, status, body} ->
-        {:error, {:unexpected_status, status, body}}
-      {:error, reason} ->
-        {:error, reason}
+      {:ok, 200, %{} = json} -> {:ok, json}  # includes full GW2 account (has "name")
+      {:ok, status, body}    -> {:error, {:unexpected_status, status, body}}
+      {:error, reason}       -> {:error, reason}
     end
   end
 end
