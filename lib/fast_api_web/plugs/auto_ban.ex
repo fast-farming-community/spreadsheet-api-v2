@@ -11,53 +11,39 @@ defmodule FastApiWeb.Plugs.AutoBan do
   def call(%Plug.Conn{method: "OPTIONS"} = conn, _opts), do: conn
 
   def call(conn, _opts) do
-    ensure_table_race_safe!()
-
-    ip_raw = client_ip(conn)
-    ip = normalize_ip(ip_raw)
+    # don't create ETS here; fail open if missing
+    ip = conn |> client_ip() |> normalize_ip()
     now = System.system_time(:millisecond)
 
-    case :ets.lookup(@ban_table, ip) do
-      [{^ip, until}] when until > now ->
-        # already banned → block quietly with 403
-        conn |> send_resp(403, "Forbidden") |> halt()
+    banned? =
+      case :ets.info(@ban_table) do
+        :undefined ->
+          false
 
-      [{^ip, _expired}] ->
-        :ets.delete(@ban_table, ip)
-        maybe_ban_by_request(conn, ip, now)
+        _ ->
+          # Guard against races / hot reloads
+          try do
+            case :ets.lookup(@ban_table, ip) do
+              [{^ip, until}] when until > now ->
+                true
 
-      [] ->
-        maybe_ban_by_request(conn, ip, now)
-    end
-  end
+              [{^ip, _expired}] ->
+                # cleanup stale entry, then allow
+                :ets.delete(@ban_table, ip)
+                false
 
-  # Ban only if feature=salvageable (path or query) AND key is malformed
-  defp maybe_ban_by_request(conn, ip, now) do
-    conn = fetch_query_params(conn)
-    qs_params = conn.params
-    feature_q = Map.get(qs_params, "feature", "") |> to_string() |> String.downcase()
-    key_q = Map.get(qs_params, "key") || Map.get(qs_params, "id")
-
-    path = conn.request_path || ""
-    down = String.downcase(path <> "?" <> (conn.query_string || ""))
-
-    feature_hit? =
-      feature_q == "salvageable" or
-      String.contains?(down, "/salvageable") or
-      String.contains?(down, "feature=salvageable")
-
-    key_p = key_q || extract_key_from_path(path)
-
-    if feature_hit? and key_p && key_malformed?(key_p) and not MapSet.member?(@allow, ip) do
-      # Atomic insert: only the very first request for this IP will succeed
-      if :ets.insert_new(@ban_table, {ip, now + @ban_ms}) do
-        # First offender → send 410 Gone
-        conn |> send_resp(410, "Gone") |> halt()
-      else
-        # Another concurrent request already banned it → silent 403
-        conn |> send_resp(403, "Forbidden") |> halt()
+              [] ->
+                false
+            end
+          rescue
+            ArgumentError -> false
+          end
       end
+
+    if banned? do
+      conn |> send_resp(403, "Forbidden") |> halt()
     else
+      # don’t ever ban on the fly anymore
       conn
     end
   end
@@ -84,7 +70,7 @@ defmodule FastApiWeb.Plugs.AutoBan do
   end
   defp key_malformed?(_), do: false
 
-  # Create ETS table safely under concurrency
+  # no longer used in call/2
   defp ensure_table_race_safe!() do
     case :ets.whereis(@ban_table) do
       :undefined ->
