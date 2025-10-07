@@ -222,7 +222,7 @@ defmodule FastApiWeb.ContentController do
     url = @github_raw_base <> filename
     req = Finch.build(:get, url, @headers, nil)
 
-    case Finch.request(req, FastApi.Finch, receive_timeout: @@finch_timeout) do
+    case Finch.request(req, FastApi.Finch, receive_timeout: @finch_timeout) do
       {:ok, %Finch.Response{status: 200, body: body}} ->
         {:ok, body}
 
