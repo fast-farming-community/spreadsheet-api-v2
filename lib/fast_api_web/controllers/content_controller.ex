@@ -52,7 +52,8 @@ defmodule FastApiWeb.ContentController do
     ) # skip rows that are from previous years
     |> Repo.all()
     |> Enum.each(fn a ->
-      prev_year = a.updated_at |> NaiveDateTime.to_date() |> Date.year()
+      # FIX: use the Date struct field
+      prev_year = (a.updated_at |> NaiveDateTime.to_date()).year
       next_year = prev_year + 1
 
       case Map.fetch(@lny_dates, next_year) do
