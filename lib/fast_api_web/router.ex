@@ -64,7 +64,6 @@ defmodule FastApiWeb.Router do
     get "/changelog", ContentController, :changelog
     get "/website-content-updates", ContentController, :content_updates
     get "/website-todos", ContentController, :todos
-    get "/contributors", ContentController, :contributors
     get "/guides", ContentController, :guides
     get "/health", HealthController, :show
     get "/health/stream", HealthController, :stream

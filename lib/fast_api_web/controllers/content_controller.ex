@@ -3,15 +3,25 @@ defmodule FastApiWeb.ContentController do
 
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
+  import Ecto.Query
 
   require Logger
+
+  # published OR date-active (inserted_at..updated_at, inclusive; open-ended supported)
+  defp active_or_published(queryable) do
+    from a in queryable,
+      where:
+        a.published or
+          (fragment("COALESCE(date(?), '-infinity'::date) <= CURRENT_DATE", a.inserted_at) and
+           fragment("COALESCE(date(?), 'infinity'::date) >= CURRENT_DATE", a.updated_at))
+  end
 
   def index(conn, _params) do
     data =
       Fast.About
+      |> active_or_published()
+      |> order_by([a], asc_nulls_last: a.order)
       |> Repo.all()
-      |> Enum.filter(& &1.published)
-      |> Enum.sort_by(& &1.order, :asc)
 
     json(conn, data)
   end
@@ -80,15 +90,6 @@ defmodule FastApiWeb.ContentController do
         Logger.error("todos: upstream error: #{msg}")
         send_resp(conn, 502, "Upstream error")
     end
-  end
-
-  def contributors(conn, _params) do
-    data =
-      Fast.Contributor
-      |> Repo.all()
-      |> Enum.filter(& &1.published)
-
-    json(conn, data)
   end
 
   def guides(conn, _params) do

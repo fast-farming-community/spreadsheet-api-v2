@@ -32,14 +32,6 @@ defmodule FastApi.Repo.Migrations.Initial do
       timestamps()
     end
 
-    create table("contributors") do
-      add(:name, :string)
-      add(:published, :boolean)
-      add(:type, :string)
-
-      timestamps()
-    end
-
     create table("guides") do
       add(:farmtrain, :string)
       add(:image, :string)

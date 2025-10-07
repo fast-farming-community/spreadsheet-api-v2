@@ -63,20 +63,6 @@ defmodule FastApi.Schemas.Fast do
     end
   end
 
-  defmodule Contributor do
-    @moduledoc false
-    use Ecto.Schema
-
-    @derive {Jason.Encoder, only: [:name, :type]}
-    schema "contributors" do
-      field(:name, :string)
-      field(:published, :boolean)
-      field(:type, :string)
-
-      timestamps()
-    end
-  end
-
   defmodule DetailFeature do
     @moduledoc false
     use Ecto.Schema
