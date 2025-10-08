@@ -213,7 +213,12 @@ defmodule FastApi.Stats do
   end
 
   def compact!() do
-    %{daily: daily, retention_days: rd} = load_stats()
-    save_stats!(%{retention_days: rd, daily: trim_old(daily, rd)})
+    Task.start(fn ->
+        Process.sleep(1000)
+        %{daily: daily, retention_days: rd} = load_stats()
+        save_stats!(%{retention_days: rd, daily: trim_old(daily, rd)})
+    end)
+
+    :ok
   end
 end
