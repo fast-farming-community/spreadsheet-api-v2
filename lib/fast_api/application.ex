@@ -32,7 +32,9 @@ defmodule FastApi.Application do
       FastApi.Health.Server,
 
       # HTTP endpoint last
-      FastApiWeb.Endpoint
+      FastApiWeb.Endpoint,
+
+      FastApi.StatsGuard
     ]
 
     opts = [strategy: :one_for_one, name: FastApi.Supervisor]

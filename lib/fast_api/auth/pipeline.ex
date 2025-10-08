@@ -1,4 +1,3 @@
-# lib/fast_api/auth/pipeline.ex
 defmodule FastApi.Auth.Pipeline do
   @moduledoc "Authentication pipeline."
   use Guardian.Plug.Pipeline,

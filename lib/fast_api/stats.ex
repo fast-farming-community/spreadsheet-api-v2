@@ -7,22 +7,29 @@ defmodule FastApi.Stats do
   @name "stats"
   @retention_days 30
 
-  # ---------- Public API ----------
-
   @doc """
   Track an event for today. Supported types:
     - :page_view with %{route: "/path"}
     - :click with %{target: "link:/path" | "out:https://..."}
     - :sequence with %{from: "/from", to: "/to"}  (optional)
   """
-  def track(:page_view, %{route: route}) when is_binary(route),
-    do: inc_today("page_views", norm_route(route))
+  def track(:page_view, %{route: route} = p) when is_binary(route) do
+    key = norm_route(route)
+    if allow?(p, :page_view, key), do: inc_today("page_views", key)
+    :ok
+  end
 
-  def track(:click, %{target: target}) when is_binary(target),
-    do: inc_today("clicks", norm_click(target))
+  def track(:click, %{target: target} = p) when is_binary(target) do
+    key = norm_click(target)
+    if allow?(p, :click, key), do: inc_today("clicks", key)
+    :ok
+  end
 
-  def track(:sequence, %{from: from, to: to}) when is_binary(from) and is_binary(to),
-    do: inc_today("sequences", norm_route(from) <> ">" <> norm_route(to))
+  def track(:sequence, %{from: from, to: to} = p) when is_binary(from) and is_binary(to) do
+    key = norm_route(from) <> ">" <> norm_route(to)
+    if allow?(p, :sequence, key), do: inc_today("sequences", key)
+    :ok
+  end
 
   def track(_type, _payload), do: :ok
 
@@ -221,4 +228,8 @@ defmodule FastApi.Stats do
 
     :ok
   end
+
+  defp allow?(%{_ctx: %{fp: fp}}, type, key),
+    do: FastApi.StatsGuard.allow?(fp, type, key)
+  defp allow?(_, _, _), do: false
 end

@@ -1,4 +1,3 @@
-# lib/fast_api_web/controllers/stats_controller.ex
 defmodule FastApiWeb.StatsController do
   use FastApiWeb, :controller
   alias FastApi.Stats
@@ -7,17 +6,29 @@ defmodule FastApiWeb.StatsController do
   # { "type": "page_view", "route": "/guides" }
   # { "type": "click", "target": "link:/guides" } or "out:https://..."
   # { "type": "sequence", "from": "/guides", "to": "/builds" }
-  def track(conn, params) do
-    case sanitize(params) do
-      {:ok, {:page_view, p}} -> Stats.track(:page_view, p)
-      {:ok, {:click, p}}     -> Stats.track(:click, p)
-      {:ok, {:sequence, p}}  -> Stats.track(:sequence, p)
-      :ignore                -> :ok
-      {:error, msg} ->
-        conn |> put_status(:bad_request) |> json(%{error: msg}) |> halt()
-    end
 
-    json(conn, %{ok: true})
+  def track(conn, params) do
+    referer = List.first(get_req_header(conn, "referer")) || ""
+    allowed_host? =
+      case URI.parse(referer) do
+        %URI{host: h, scheme: s} when s in ["http","https"] ->
+          h in ["farming-community.eu","www.farming-community.eu"]
+        _ -> false
+      end
+
+    if not allowed_host? do
+      json(conn, %{ok: true})
+    else
+      ctx = %{fp: conn.assigns[:stats_fpid] || "anon"}
+
+      case sanitize(params) do
+        {:ok, {t, p}} -> Stats.track(t, Map.put(p, :_ctx, ctx))
+        :ignore        -> :ok
+        {:error, msg}  -> conn |> put_status(:bad_request) |> json(%{error: msg}) |> halt()
+      end
+
+      json(conn, %{ok: true})
+    end
   end
 
   def summary(conn, params) do
