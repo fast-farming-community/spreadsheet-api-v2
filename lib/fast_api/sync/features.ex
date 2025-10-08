@@ -183,9 +183,9 @@ defmodule FastApi.Sync.Features do
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
-      {:error, other} ->
-        Logger.error("Chunk #{idx}/#{total} pid=#{pid_label} API error: #{inspect(other)}")
-        {:error, other}
+      {:error, _other} ->
+        Logger.error("GSheets API error on chunk #{idx}/#{total} (#{length(ranges)} ranges): #{inspect(ranges)}")
+        {:error, {:gsheets_error, ranges}}
     end
   end
 
@@ -230,8 +230,8 @@ defmodule FastApi.Sync.Features do
     end)
   end
 
-  defp process_response({:error, %{body: error}}, _tables, _tier) do
-    Logger.error("Error while fetching spreadsheet data: #{inspect(error)}")
+  defp process_response({:error, {:gsheets_error, ranges}}, _tables, _tier) do
+    Logger.error("Error while fetching spreadsheet data (ranges only): #{inspect(ranges)}")
     []
   end
 

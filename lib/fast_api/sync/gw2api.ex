@@ -451,8 +451,8 @@ defmodule FastApi.Sync.GW2API do
         |> request_json()
 
       if length(result) != length(chunk) do
-        missing_ids = chunk -- Enum.map(result, &Map.get(&1, "id"))
-        Logger.error("Missing IDs for #{req_url}: #{inspect(missing_ids)}")
+        missing_count = length(chunk) - length(result)
+        Logger.error("Missing IDs for #{req_url}: #{missing_count} missing (chunk=#{length(chunk)})")
       end
 
       cond do
