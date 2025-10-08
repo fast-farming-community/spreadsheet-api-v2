@@ -25,7 +25,6 @@ defmodule FastApiWeb.Router do
 
   scope "/api/v1/auth", FastApiWeb do
     pipe_through [:api]
-
     post "/login", UserController, :login
     post "/pre-register", UserController, :pre_register
     post "/refresh", UserController, :refresh
@@ -37,23 +36,28 @@ defmodule FastApiWeb.Router do
     post "/profile", UserController, :update_profile
   end
 
-  # CORS-safe tracker routes
   scope "/api/v1/tracker", FastApiWeb do
     pipe_through [:api]
-    post "/validate-key",          TrackerController, :validate_key
-    post "/characters",            TrackerController, :characters
-    post "/characters/inventory",  TrackerController, :character_inventory
+
+    post "/validate-key",           TrackerController, :validate_key
+    post "/characters",             TrackerController, :characters
+    post "/characters/inventory",   TrackerController, :character_inventory
     post "/characters/inventories", TrackerController, :characters_inventories
+    post "/account/info",           TrackerController, :account
+    post "/account/bank",           TrackerController, :account_bank
+    post "/account/materials",      TrackerController, :account_materials
+    post "/account/inventory",      TrackerController, :account_inventory
+    post "/account/wallet",         TrackerController, :account_wallet
+    post "/items",                  TrackerController, :items
+    post "/prices",                 TrackerController, :prices
+    post "/currencies",             TrackerController, :currencies
+  end
 
-    post "/account/info",          TrackerController, :account
-    post "/account/bank",          TrackerController, :account_bank
-    post "/account/materials",     TrackerController, :account_materials
-    post "/account/inventory",     TrackerController, :account_inventory
-    post "/account/wallet",        TrackerController, :account_wallet
+  scope "/api/v1/stats", FastApiWeb do
+    pipe_through [:api]
 
-    post "/items",                 TrackerController, :items
-    post "/prices",                TrackerController, :prices
-    post "/currencies",            TrackerController, :currencies
+    post "/track",   StatsController, :track
+    get  "/summary", StatsController, :summary
   end
 
   scope "/api/v1", FastApiWeb do

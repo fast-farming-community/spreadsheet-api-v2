@@ -56,6 +56,7 @@ if config_env() == :prod do
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
       {"@hourly", {FastApi.Sync.Public, :execute, []}}
+      {"@daily", {FastApi.Stats, :compact!, []}}
     ]
 
   # ## Configuring the mailer
