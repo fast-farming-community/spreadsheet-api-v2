@@ -1,28 +1,28 @@
 version: '3'
 
-vars:
-  REL: "_build/prod/rel/fast_api"
-  BIN: "{{.REL}}/bin/fast_api"
-
 tasks:
+  apply-seeds:
+    cmds:
+      - mix run priv/repo/seeds.exs
+
   build-prod:
-    desc: "Build prod release (quiet), normalize scripts, start daemon"
-    env: { MIX_ENV: prod, MIX_QUIET: "1" }
     cmds:
       - task: stop-prod
-      - MIX_ENV=prod mix release --overwrite --quiet
+      - MIX_ENV=prod mix release --overwrite
       - task: normalize-release-eol
       - task: start-prod
+    env:
+      MIX_ENV: prod
 
   normalize-release-eol:
     desc: "Strip CRLF and ensure exec bits on release scripts"
     cmds:
       - |
-        set -euo pipefail
+        set -eu
         files=(
-          "{{.REL}}/releases/"*/"env.sh"
-          "{{.BIN}}"
-          "{{.REL}}/bin/"*
+          "_build/prod/rel/fast_api/releases/"*/"env.sh"
+          "_build/prod/rel/fast_api/bin/fast_api"
+          "_build/prod/rel/fast_api/bin/"*
         )
         for f in "${files[@]}"; do
           [ -f "$f" ] || continue
@@ -30,45 +30,80 @@ tasks:
           chmod +x "$f"
         done
 
-  start-prod:
-    desc: "Start release in background (daemon)"
+  deps:
     cmds:
-      - |
-        set -euo pipefail
-        [ -x "{{.BIN}}" ] || { echo "Release not found. Run: task build-prod"; exit 1; }
-        "{{.BIN}}" daemon
+      - mix deps.get
 
-  stop-prod:
-    desc: "Graceful stop (fallback to SIGKILL if needed)"
+  deps-update:
     cmds:
-      - |
-        set -euo pipefail
-        if [ -x "{{.BIN}}" ]; then
-          if "{{.BIN}}" stop >/dev/null 2>&1; then
-            exit 0
-          fi
-        fi
-        # Fallback: kill BEAMs related to this app
-        pids=$(ps -eo pid,command | awk '/[f]ast_api.*erts|[e]lixir.*fast_api/ {print $1}')
-        if [ -n "$pids" ]; then
-          echo "Forcing stop PIDs: $pids"
-          kill -TERM $pids 2>/dev/null || true
-          sleep 2
-          kill -KILL $pids 2>/dev/null || true
-        fi
+      - mix deps.update --all
+
+  gen-seeds:
+    cmds:
+      - mix run priv/repo/gen-seeds.exs
+    env:
+      MIX_ENV: prod
+
+  load-env:
+    cmds:
+      - source .env
+
+  lint:
+    cmds:
+      - mix dialyzer
+      - mix credo
+    env:
+      MIX_ENV: test
+
+  migrate:
+    cmds:
+      - mix ecto.migrate
+    env:
+      MIX_ENV: dev
+
+  migrate-prod:
+    deps: [load-env]
+    cmds:
+      - mix ecto.migrate
+    env:
+      MIX_ENV: prod
+
+  run-dev:
+    cmds:
+      - iex -S mix phx.server
+    env:
+      MIX_ENV: dev
 
   restart-prod:
-    desc: "Restart release"
     cmds:
       - task: stop-prod
       - task: start-prod
 
-  status:
-    desc: "Show running BEAM processes for fast_api"
+  start-prod:
     cmds:
-      - ps -eo pid,etime,cmd | egrep -i 'beam.smp|elixir' | egrep -i 'fast_api|erts' || true
+      - _build/prod/rel/fast_api/bin/fast_api daemon
 
-  remote:
-    desc: "Attach remote IEx to running node"
+  stop-prod:
     cmds:
-      - "{{.BIN}} remote"
+      - ps -ea -o pid,command | grep [e]lixir | awk '{print $1}' | xargs kill -9
+
+  local-env-down:
+    cmds:
+      - docker compose -f $(pwd)/docker/docker-compose.yaml down --remove-orphans
+
+  local-env-up:
+    cmds:
+      - docker compose -f $(pwd)/docker/docker-compose.yaml up -d
+
+  local-env:
+    cmds:
+      - task: load-env
+      - task: local-env-down
+      - task: local-env-up
+      # - task: seed
+
+  seed:
+    cmds:
+      - mix run priv/repo/seeds.exs
+    env:
+      MIX_ENV: dev
