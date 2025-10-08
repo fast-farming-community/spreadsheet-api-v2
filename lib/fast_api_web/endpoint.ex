@@ -18,21 +18,13 @@ defmodule FastApiWeb.Endpoint do
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :fast_api
   end
 
-  # CORS (must be before Router)
-  plug CORSPlug,
-    origin: [
-      "https://farming-community.eu",
-      "https://www.farming-community.eu"
-    ],
-    methods: ["GET", "POST", "OPTIONS"],
-    headers: ["content-type"],
-    max_age: 86400,
-    send_preflight_response?: true
+  # CORS must come BEFORE parsers so preflights and error responses get headers
+  plug CORSPlug
 
   plug Plug.RequestId
   # plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  # Bot/Crawler autoban (skips OPTIONS in your plug)
+  # Auto-Ban Bots/Crawlers
   plug FastApiWeb.Plugs.AutoBan
 
   plug Plug.Parsers,
