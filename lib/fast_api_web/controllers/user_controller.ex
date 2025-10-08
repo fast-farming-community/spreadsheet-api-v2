@@ -6,25 +6,35 @@ defmodule FastApiWeb.UserController do
   alias FastApi.Utils.Ecto, as: EctoUtils
   alias FastApi.Schemas.Auth.User
 
-  def change_password(conn, password_params) do
-    token =
-      Guardian.Plug.current_token(conn) ||
-        (get_req_header(conn, "authorization")
-         |> List.first()
-         |> case do
-              "Bearer " <> t -> t
-              t when is_binary(t) -> t
-              _ -> nil
-            end)
+  @access_claims %{"iss" => "fast_api", "typ" => "access"}
+  @refresh_claims %{"iss" => "fast_api", "typ" => "refresh"}
 
-    with {:ok, user, _claims} <-
-           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
+  defp bearer_token(conn) do
+    Guardian.Plug.current_token(conn) ||
+      (get_req_header(conn, "authorization")
+       |> List.first()
+       |> case do
+         "Bearer " <> t -> t
+         t when is_binary(t) -> t
+         _ -> nil
+       end)
+  end
+
+  def change_password(conn, password_params) do
+    token = bearer_token(conn)
+
+    with {:ok, user, _claims} <- Token.resource_from_token(token, @access_claims) do
       cond do
         not is_binary(user.password) or user.password == "" ->
           Bcrypt.no_user_verify()
+
           conn
           |> Plug.Conn.put_status(:unauthorized)
-          |> json(%{errors: ["No password is set for this account. Please complete registration or set a password."]})
+          |> json(%{
+            errors: [
+              "No password is set for this account. Please complete registration or set a password."
+            ]
+          })
 
         Bcrypt.verify_pass(password_params["old_password"] || "", user.password) ->
           new_password = password_params["password"] || password_params["new_password"]
@@ -37,7 +47,7 @@ defmodule FastApiWeb.UserController do
 
           case Auth.change_password(user, update_params) do
             {:ok, %User{} = updated_user} ->
-              {:ok, access, _}  = Auth.Token.access_token(updated_user)
+              {:ok, access, _} = Auth.Token.access_token(updated_user)
               {:ok, refresh, _} = Auth.Token.refresh_token(updated_user)
               json(conn, %{access: access, refresh: refresh})
 
@@ -101,6 +111,7 @@ defmodule FastApiWeb.UserController do
               login_success(conn, user)
             else
               Bcrypt.no_user_verify()
+
               conn
               |> Plug.Conn.put_status(:unauthorized)
               |> json(%{error: "Invalid username/password combination"})
@@ -108,13 +119,18 @@ defmodule FastApiWeb.UserController do
 
           _ ->
             Bcrypt.no_user_verify()
+
             conn
             |> Plug.Conn.put_status(:unauthorized)
-            |> json(%{error: "This account has no password set yet. Please complete registration or set a password."})
+            |> json(%{
+              error:
+                "This account has no password set yet. Please complete registration or set a password."
+            })
         end
 
       _ ->
         Bcrypt.no_user_verify()
+
         conn
         |> Plug.Conn.put_status(:unauthorized)
         |> json(%{error: "Invalid username/password combination"})
@@ -122,8 +138,7 @@ defmodule FastApiWeb.UserController do
   end
 
   def refresh(conn, %{"token" => refresh}) do
-    with {:ok, user, _} <-
-           Token.resource_from_token(refresh, %{"iss" => "fast_api", "typ" => "refresh"}),
+    with {:ok, user, _} <- Token.resource_from_token(refresh, @refresh_claims),
          {:ok, access, _} <- Auth.Token.access_token(user) do
       json(conn, %{access: access})
     else
@@ -135,75 +150,33 @@ defmodule FastApiWeb.UserController do
   end
 
   def me(conn, _params) do
+    token = bearer_token(conn)
 
-    token =
-
-      Guardian.Plug.current_token(conn) ||
-
-        (get_req_header(conn, "authorization")
-
-         |> List.first()
-
-         |> case do
-
-              "Bearer " <> t -> t
-
-              t when is_binary(t) -> t
-
-              _ -> nil
-
-            end)
-
-
-
-    with {:ok, user, _claims} <-
-
-           Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
-
+    with {:ok, user, _claims} <- Token.resource_from_token(token, @access_claims) do
       role = Auth.get_user_role(user)
 
       json(conn, %{
-
         email: user.email,
-
         role: role,
-
         api_keys: user.api_keys || %{},
-
         ingame_name: user.ingame_name || nil
-
       })
-
     else
-
       _ ->
-
         conn
-
         |> Plug.Conn.put_status(:unauthorized)
-
         |> json(%{error: "Invalid or missing access token"})
-
     end
-
   end
 
   def update_profile(conn, params) do
-    token =
-      Guardian.Plug.current_token(conn) ||
-        (get_req_header(conn, "authorization")
-        |> List.first()
-        |> case do
-              "Bearer " <> t -> t
-              t when is_binary(t) -> t
-              _ -> nil
-            end)
+    token = bearer_token(conn)
 
-    with {:ok, user, _claims} <-
-          Token.resource_from_token(token, %{"iss" => "fast_api", "typ" => "access"}) do
+    with {:ok, user, _claims} <- Token.resource_from_token(token, @access_claims) do
       case Auth.update_profile(user, sanitize_profile_params(params)) do
         {:ok, %User{} = updated} ->
           role = Auth.get_user_role(updated)
+
           json(conn, %{
             email: updated.email,
             role: role,
@@ -212,14 +185,20 @@ defmodule FastApiWeb.UserController do
           })
 
         {:error, :unprocessable_entity, msg} ->
-          conn |> Plug.Conn.put_status(:unprocessable_entity) |> json(%{errors: [msg]})
+          conn
+          |> Plug.Conn.put_status(:unprocessable_entity)
+          |> json(%{errors: [msg]})
 
         {:error, %Ecto.Changeset{} = changeset} ->
-          conn |> Plug.Conn.put_status(:bad_request) |> json(%{errors: EctoUtils.get_errors(changeset)})
+          conn
+          |> Plug.Conn.put_status(:bad_request)
+          |> json(%{errors: EctoUtils.get_errors(changeset)})
       end
     else
       _ ->
-        conn |> Plug.Conn.put_status(:unauthorized) |> json(%{error: "Invalid or missing access token"})
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+        |> json(%{error: "Invalid or missing access token"})
     end
   end
 
@@ -231,7 +210,9 @@ defmodule FastApiWeb.UserController do
             {k, v}, acc when is_binary(k) and is_binary(v) -> Map.put(acc, k, v)
             _kv, acc -> acc
           end)
-        _ -> nil
+
+        _ ->
+          nil
       end
 
     ingame_name =
@@ -239,7 +220,9 @@ defmodule FastApiWeb.UserController do
         {:ok, s} when is_binary(s) ->
           trimmed = String.trim(s)
           if trimmed == "", do: :__clear__, else: trimmed
-        _ -> :__absent__
+
+        _ ->
+          :__absent__
       end
 
     out = %{}
@@ -247,19 +230,15 @@ defmodule FastApiWeb.UserController do
 
     out =
       case ingame_name do
-        :__absent__ -> out                  # don't touch IGN
-        :__clear__  -> Map.put(out, "ingame_name", nil)  # explicit clear to NULL
-        v           -> Map.put(out, "ingame_name", v)    # set to provided value
+        :__absent__ -> out
+        :__clear__ -> Map.put(out, "ingame_name", nil)
+        v -> Map.put(out, "ingame_name", v)
       end
 
     out
   end
 
   defp sanitize_profile_params(_), do: %{}
-
-
-  defp maybe_put(map, _k, nil), do: map
-  defp maybe_put(map, k, v), do: Map.put(map, k, v)
 
   defp login_success(conn, user) do
     {:ok, access, _} = Auth.Token.access_token(user)
