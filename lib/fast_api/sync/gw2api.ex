@@ -157,7 +157,7 @@ defmodule FastApi.Sync.GW2API do
         batch_with_ts =
           Enum.map(batch, fn row ->
             row
-            |> Map.put_new(:inserted_at, now)
+            |> Map.put(:inserted_at, now)  # overwrite to satisfy NOT NULL on first insert
             |> Map.put(:updated_at, now)
           end)
 
@@ -336,7 +336,7 @@ defmodule FastApi.Sync.GW2API do
     |> Stream.map(&Map.drop(&1, [:__meta__, :__struct__]))
     |> Stream.map(fn row ->
       row
-      |> Map.put_new(:inserted_at, now)
+      |> Map.put(:inserted_at, now)  # overwrite even if nil
       |> Map.put(:updated_at, now)
     end)
     |> Enum.to_list()
@@ -349,7 +349,8 @@ defmodule FastApi.Sync.GW2API do
       Repo.insert_all(
         Fast.Item,
         batch,
-        on_conflict: :replace_all,
+        # keep original inserted_at when row already exists
+        on_conflict: {:replace_all_except, [:id, :inserted_at]},
         conflict_target: [:id]
       )
     end)
