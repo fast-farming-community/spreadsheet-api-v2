@@ -2,22 +2,11 @@ defmodule FastApiWeb.StatsController do
   use FastApiWeb, :controller
   alias FastApi.Stats
 
-  # CORS preflight handler
-  def preflight(conn, _params) do
-    origin = List.first(get_req_header(conn, "origin")) || "*"
-
-    conn
-    |> put_resp_header("access-control-allow-origin", origin)
-    |> put_resp_header("access-control-allow-methods", "POST, GET, OPTIONS")
-    |> put_resp_header("access-control-allow-headers", "content-type")
-    |> put_resp_header("access-control-max-age", "86400")
-    |> send_resp(204, "")
-  end
-
   # Accepts JSON bodies like:
   # { "type": "page_view", "route": "/guides" }
   # { "type": "click", "target": "link:/guides" } or "out:https://..."
   # { "type": "sequence", "from": "/guides", "to": "/builds" }
+
   def track(conn, params) do
     referer = List.first(get_req_header(conn, "referer")) || ""
     allowed_host? =
@@ -26,8 +15,6 @@ defmodule FastApiWeb.StatsController do
           h in ["farming-community.eu","www.farming-community.eu"]
         _ -> false
       end
-
-    conn = allow_cors(conn)
 
     if not allowed_host? do
       json(conn, %{ok: true})
@@ -57,15 +44,7 @@ defmodule FastApiWeb.StatsController do
         _ -> 10
       end
 
-    conn = allow_cors(conn)
     json(conn, Stats.summary(%{limit: limit}))
-  end
-
-  defp allow_cors(conn) do
-    origin = List.first(get_req_header(conn, "origin")) || "*"
-    conn
-    |> put_resp_header("access-control-allow-origin", origin)
-    |> put_resp_header("vary", "Origin")
   end
 
   defp sanitize(%{"type" => "page_view", "route" => r}) when is_binary(r),

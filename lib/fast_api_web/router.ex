@@ -60,8 +60,6 @@ defmodule FastApiWeb.Router do
   scope "/api/v1", FastApiWeb do
     pipe_through [:api, :stats]
     
-    options "/stats/track", StatsController, :preflight
-    
     post "/stats/track", StatsController, :track
     get  "/stats/summary", StatsController, :summary
   end
