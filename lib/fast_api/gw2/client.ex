@@ -2,9 +2,10 @@ defmodule FastApi.GW2.Client do
   @moduledoc false
   @base "https://api.guildwars2.com"
 
-  @connect_timeout 5_000
-  @pool_timeout    5_000
-  @receive_timeout 15_000
+  # Slightly higher network timeouts (safer for GW2 spikes)
+  @connect_timeout 10_000
+  @pool_timeout    10_000
+  @receive_timeout 30_000
 
   @chunk_size_items      25
   @chunk_size_prices     25
@@ -13,6 +14,10 @@ defmodule FastApi.GW2.Client do
   @max_concurrency 4
   @retry_attempts  3
   @retry_base_ms   200
+
+  # Stream timeout ~= worst-case (receive_timeout * retries) + small buffer
+  @stream_buffer_ms 5_000
+  @stream_timeout (@receive_timeout * @retry_attempts) + @stream_buffer_ms
 
   defp finch_opts(extra) do
     Keyword.merge(
@@ -82,11 +87,13 @@ defmodule FastApi.GW2.Client do
         with_retry(fn -> get(path_base <> "?" <> qs) end)
       end,
       max_concurrency: @max_concurrency,
-      timeout: @receive_timeout + 5_000
+      timeout: @stream_timeout,
+      on_timeout: :kill_task
     )
     |> Enum.reduce({:ok, []}, fn
       {:ok, {:ok, 200, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
       {:ok, {:ok, 206, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
+      {:exit, _}, acc -> acc
       {:ok, _}, acc -> acc
       _, acc -> acc
     end)
