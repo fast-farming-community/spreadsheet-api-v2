@@ -215,5 +215,5 @@ defmodule FastApi.Stats do
   def compact!() do
     %{daily: daily, retention_days: rd} = load_stats()
     save_stats!(%{retention_days: rd, daily: trim_old(daily, rd)})
-    end
+  end
 end
