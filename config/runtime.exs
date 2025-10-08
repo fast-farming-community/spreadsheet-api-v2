@@ -19,7 +19,7 @@ if config_env() == :prod do
   config :fast_api, FastApiWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      ip: {0,0,0,0,0,0,0,0},
+      ip: {0,0,0,0},
       port: port,
       protocol_options: [
         request_timeout: 30_000,
