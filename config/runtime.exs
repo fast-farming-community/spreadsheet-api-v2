@@ -25,14 +25,7 @@ if config_env() == :prod do
         idle_timeout: 30_000
       ]
     ],
-    secret_key_base: secret_key_base,
-    # CORS: strict allow-list; only adds headers when Origin matches
-    cors_plug: [
-      origin: {FastApiWeb.Endpoint, :cors_origin, []},
-      methods: ["GET", "POST", "OPTIONS"],
-      headers: ["content-type", "authorization", "x-requested-with"],
-      max_age: 86_400
-    ]
+    secret_key_base: secret_key_base
 
   config :fast_api, FastApi.Auth.Token,
     issuer: "fast_api",
