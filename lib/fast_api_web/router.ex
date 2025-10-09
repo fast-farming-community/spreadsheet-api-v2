@@ -23,10 +23,6 @@ defmodule FastApiWeb.Router do
     plug FastApiWeb.Plugs.OptionalAuth
   end
 
-  pipeline :stats do
-    plug FastApiWeb.Plugs.StatsFingerprint
-  end
-
   scope "/api/v1/auth", FastApiWeb do
     pipe_through [:api]
     post "/login", UserController, :login
@@ -55,13 +51,6 @@ defmodule FastApiWeb.Router do
     post "/items",                  TrackerController, :items
     post "/prices",                 TrackerController, :prices
     post "/currencies",             TrackerController, :currencies
-  end
-
-  scope "/api/v1", FastApiWeb do
-    pipe_through [:api, :stats]
-    
-    post "/stats/track", StatsController, :track
-    get  "/stats/summary", StatsController, :summary
   end
 
   scope "/api/v1", FastApiWeb do
