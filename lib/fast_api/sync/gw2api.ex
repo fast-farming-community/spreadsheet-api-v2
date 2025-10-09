@@ -16,6 +16,8 @@ defmodule FastApi.Sync.GW2API do
   @flags_cache_ttl_ms 86_400_000
   @flags_cache_table :gw2_flags
 
+  # --------------------------- cache utils ---------------------------
+
   defp ensure_flags_cache! do
     case :ets.info(@flags_cache_table) do
       :undefined ->
@@ -25,8 +27,7 @@ defmodule FastApi.Sync.GW2API do
           :error, :badarg -> :ok
         end
 
-      _ ->
-        :ok
+      _ -> :ok
     end
 
     :ok
@@ -34,9 +35,7 @@ defmodule FastApi.Sync.GW2API do
 
   defp flags_lookup(id) do
     case :ets.info(@flags_cache_table) do
-      :undefined ->
-        nil
-
+      :undefined -> nil
       _ ->
         case :ets.lookup(@flags_cache_table, id) do
           [{^id, flags, ts}] -> {flags, ts}
@@ -52,6 +51,8 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
+  # --------------------------- misc utils ---------------------------
+
   defp fmt_ms(ms) do
     total = div(ms, 1000)
     mins = div(total, 60)
@@ -62,6 +63,8 @@ defmodule FastApi.Sync.GW2API do
   defp now_ts(), do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
   defp mono_ms(), do: System.monotonic_time(:millisecond)
 
+  # --------------------------- items full refresh ---------------------------
+
   @spec sync_items() :: :ok
   def sync_items do
     item_ids = get_item_ids()
@@ -69,6 +72,7 @@ defmodule FastApi.Sync.GW2API do
     tradable_set = MapSet.new(commerce_item_ids)
     now = now_ts()
 
+    # Fetch all details, filter out malformed rows (no :id)
     all_rows =
       item_ids
       |> get_details(@items)
@@ -79,6 +83,7 @@ defmodule FastApi.Sync.GW2API do
       end)
       |> to_insert_rows(now)
 
+    # Delete items that disappeared from API
     existing_ids =
       Fast.Item
       |> select([i], i.id)
@@ -98,6 +103,7 @@ defmodule FastApi.Sync.GW2API do
     :ok
   end
 
+  # --------------------------- prices incremental ---------------------------
 
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
@@ -137,7 +143,7 @@ defmodule FastApi.Sync.GW2API do
                 true -> {vendor, 0, 0}
               end
             else
-              buy0 = buys && Map.get(buys, "unit_price")
+              buy0  = buys  && Map.get(buys,  "unit_price")
               sell0 = sells && Map.get(sells, "unit_price")
               buy_v = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
               sell_v = if is_nil(sell0), do: 0, else: sell0
@@ -165,7 +171,7 @@ defmodule FastApi.Sync.GW2API do
         batch_with_ts =
           Enum.map(batch, fn row ->
             row
-            |> Map.put(:inserted_at, now)
+            |> Map.put(:inserted_at, now)  # NOT NULL compatibility on first insert
             |> Map.put(:updated_at, now)
           end)
 
@@ -183,10 +189,13 @@ defmodule FastApi.Sync.GW2API do
     {:ok, %{updated: updated, changed_ids: changed_ids}}
   end
 
+  # --------------------------- sheets: ALWAYS full rewrite ---------------------------
+
   def sync_sheet do
     t0 = mono_ms()
 
-    {:ok, %{updated: updated_prices, changed_ids: changed_ids}} = sync_prices()
+    # still refresh prices first (so sheet reflects latest buy/sell)
+    {:ok, %{updated: updated_prices}} = sync_prices()
 
     items =
       Fast.Item
@@ -208,71 +217,27 @@ defmodule FastApi.Sync.GW2API do
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
     sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
 
-    cond do
-      MapSet.size(changed_ids) == 0 ->
-        dt = mono_ms() - t0
-        Logger.info(
-          "[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=0"
-        )
-        :ok
+    # ALWAYS write A..G for all rows
+    values =
+      Enum.map(items, fn i ->
+        [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
+      end)
 
-      MapSet.size(changed_ids) > trunc(total_rows * 0.8) ->
-        values =
-          Enum.map(items, fn i ->
-            [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
-          end)
+    {:ok, _response} =
+      GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
+        connection,
+        sheet_id,
+        "API!A4:G#{4 + total_rows}",
+        body: %{values: values},
+        valueInputOption: "RAW"
+      )
 
-        {:ok, _response} =
-          GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
-            connection,
-            sheet_id,
-            "API!A4:G#{4 + total_rows}",
-            body: %{values: values},
-            valueInputOption: "RAW"
-          )
-
-        dt = mono_ms() - t0
-        Logger.info(
-          "[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}"
-        )
-        :ok
-
-      true ->
-        idx_map =
-          items
-          |> Enum.with_index()
-          |> Map.new(fn {%{id: id}, idx} -> {id, idx} end)
-
-        data =
-          items
-          |> Stream.filter(fn i -> MapSet.member?(changed_ids, i.id) end)
-          |> Stream.map(fn i ->
-            row = Map.fetch!(idx_map, i.id) + 4
-            %{
-              range: "API!C#{row}:D#{row}",
-              values: [[i.buy, i.sell]]
-            }
-          end)
-          |> Enum.to_list()
-
-        if data == [] do
-          :ok
-        else
-          {:ok, _resp} =
-            GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_update(
-              connection,
-              sheet_id,
-              body: %{data: data, valueInputOption: "RAW"}
-            )
-
-          dt = mono_ms() - t0
-          Logger.info(
-            "[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{length(data)}"
-          )
-          :ok
-        end
-    end
+    dt = mono_ms() - t0
+    Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
+    :ok
   end
+
+  # --------------------------- HTTP helpers ---------------------------
 
   defp get_details(ids, base_url) do
     ids
@@ -301,21 +266,37 @@ defmodule FastApi.Sync.GW2API do
     Finch.build(:get, @prices) |> request_json()
   end
 
+  # robust: retry timeouts and 5xx with exponential-ish backoff
   defp request_json(request, retry \\ 0) do
+    max = 5
+
     case Finch.request(request, FastApi.Finch) do
+      {:ok, %Finch.Response{status: status} = resp} when status >= 500 and retry < max ->
+        :timer.sleep(500 * (retry + 1))
+        request_json(request, retry + 1)
+
       {:ok, %Finch.Response{status: status, body: body}} when status >= 500 ->
         Logger.error("HTTP #{status} from remote; body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
         []
-      {:ok, %Finch.Response{status: status, body: body}} ->
+
+      {:ok, %Finch.Response{status: _status, body: body}} ->
         case Jason.decode(body) do
           {:ok, decoded} when is_list(decoded) -> decoded
-          {:ok, decoded} when is_map(decoded) -> [decoded]
-          {:error, _} -> []
+          {:ok, decoded} when is_map(decoded)  -> [decoded]
+          {:ok, _other} ->
+            Logger.error("Unexpected JSON shape")
+            []
+          {:error, error} ->
+            Logger.error("Failed to decode JSON: #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
+            []
         end
-      {:error, _} when retry < 5 ->
-        :timer.sleep(500)
+
+      {:error, %Mint.TransportError{reason: :timeout}} when retry < max ->
+        :timer.sleep(500 * (retry + 1))
         request_json(request, retry + 1)
-      {:error, _} ->
+
+      {:error, error} ->
+        Logger.error("HTTP request error: #{inspect(error)}")
         []
     end
   end
@@ -332,7 +313,6 @@ defmodule FastApi.Sync.GW2API do
 
   defp accountbound_only?(flags) when is_list(flags),
     do: Enum.any?(flags, &(&1 == "AccountBound"))
-
   defp accountbound_only?(_), do: false
 
   defp to_insert_rows(items, now) do
@@ -352,15 +332,19 @@ defmodule FastApi.Sync.GW2API do
       Repo.insert_all(
         Fast.Item,
         batch,
+        # keep original inserted_at when row already exists
         on_conflict: {:replace_all_except, [:id, :inserted_at]},
         conflict_target: [:id]
       )
     end)
   end
 
+  # --------------------------- price fetchers ---------------------------
+
   defp fetch_prices_for_chunk(chunk) do
     now = mono_ms()
     ids = Enum.map(chunk, & &1.id)
+
     misses =
       ids
       |> Enum.reject(fn id ->
@@ -389,6 +373,7 @@ defmodule FastApi.Sync.GW2API do
 
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
     prices = Finch.build(:get, req_prices) |> request_json()
+
     prices_by_id =
       prices
       |> Enum.filter(&match?(%{"id" => _}, &1))
@@ -414,15 +399,24 @@ defmodule FastApi.Sync.GW2API do
         true -> res
       end
     rescue
-      _ -> []
+      e ->
+        Logger.warning("prices error=#{Exception.message(e)}; retrying? #{attempts > 1}")
+        if attempts > 1 do
+          :timer.sleep(backoff)
+          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
+        else
+          []
+        end
     end
   end
 
   defp get_details_chunk_with_retry(chunk, base_url, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
     :timer.sleep(:rand.uniform(300))
     req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
+
     try do
       result = Finch.build(:get, req_url) |> request_json()
+
       if result == [] and attempts > 1 do
         :timer.sleep(backoff)
         get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
@@ -430,7 +424,14 @@ defmodule FastApi.Sync.GW2API do
         result
       end
     rescue
-      _ -> []
+      e ->
+        Logger.warning("items error=#{Exception.message(e)}; retrying? #{attempts > 1} url=#{req_url}")
+        if attempts > 1 do
+          :timer.sleep(backoff)
+          get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
+        else
+          []
+        end
     end
   end
 end
