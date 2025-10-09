@@ -40,13 +40,12 @@ defmodule FastApi.Sync.Features do
   def execute(repo, tier \\ :free) do
     repo_tag = metadata_name(repo)
     t0 = System.monotonic_time(:millisecond)
-    Logger.info("[features] START tier=#{tier_label(tier)} repo=#{repo_tag}")
 
     try do
       updated = retry_execute(repo, tier, 1)
       dt = System.monotonic_time(:millisecond) - t0
       total = Repo.aggregate(repo, :count, :id)
-      Logger.info("[features] DONE  tier=#{tier_label(tier)} repo=#{repo_tag} updated=#{updated}/#{total} in #{fmt_ms(dt)}")
+      Logger.info("[features] tier=#{tier_label(tier)} repo=#{repo_tag} updated=#{updated}/#{total} in #{fmt_ms(dt)}")
     rescue
       e ->
         Logger.error("[features] tier=#{tier_label(tier)} repo=#{repo_tag} failed: #{Exception.message(e)}")
@@ -129,43 +128,20 @@ defmodule FastApi.Sync.Features do
           []
       end)
 
-    # --- instrumented upsert logging ---
     updated_count =
       triples
-      |> Enum.reduce(0, fn {table, field, json_new}, acc ->
-        json_old = Map.get(table, field)
-        same?    = json_old == json_new
-
-        size_old = byte_size(json_old || "")
-        size_new = byte_size(json_new || "")
-
-        short = fn
-          nil -> "nil"
-          s   -> :crypto.hash(:sha256, s) |> Base.encode16(case: :lower) |> binary_part(0, 12)
-        end
-
-        repo_tag  = metadata_name(repo)
-        field_tag = Atom.to_string(field)
-        label     = table_label(table)
-
-        if same? do
-          Logger.info("[upsert] repo=#{repo_tag} #{label} field=#{field_tag} unchanged size_old=#{size_old} size_new=#{size_new} hash_old=#{short.(json_old)} hash_new=#{short.(json_new)}")
-          acc
-        else
-          cs = repo.changeset(table, %{field => json_new})
-
+      |> Enum.reduce(0, fn {table, field, json}, acc ->
+        current = Map.get(table, field)
+        if current != json do
+          cs = repo.changeset(table, %{field => json})
           case Repo.update(cs) do
-            {:ok, _} ->
-              Logger.info("[upsert] repo=#{repo_tag} #{label} field=#{field_tag} UPDATED size_old=#{size_old} size_new=#{size_new} hash_old=#{short.(json_old)} hash_new=#{short.(json_new)}")
-              acc + 1
-
-            {:error, changeset} ->
-              Logger.error("[upsert] repo=#{repo_tag} #{label} field=#{field_tag} FAILED errors=#{inspect(changeset.errors)} size_old=#{size_old} size_new=#{size_new} hash_old=#{short.(json_old)} hash_new=#{short.(json_new)}")
-              acc
+            {:ok, _}    -> acc + 1
+            {:error, _} -> acc
           end
+        else
+          acc
         end
       end)
-    # --- end instrumentation ---
 
     update_metadata!(repo, tier)
     updated_count
@@ -185,6 +161,7 @@ defmodule FastApi.Sync.Features do
   end
 
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt \\ 1)
+
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt)
        when attempt <= @backoff_attempts do
     case GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
@@ -199,7 +176,10 @@ defmodule FastApi.Sync.Features do
 
       {:error, %Tesla.Env{status: 429}} ->
         wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
-        Logger.warning("Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT_EXCEEDED; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})")
+        Logger.warning(
+          "Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT_EXCEEDED; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})"
+        )
+
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
@@ -228,9 +208,6 @@ defmodule FastApi.Sync.Features do
         headers_clean =
           headers
           |> Enum.map(&(to_string(&1) |> String.replace(~r/[\W_]+/, "")))
-
-        # helpful while debugging header drift:
-        Logger.debug("headers=#{inspect(headers_clean)} table=#{table_label(table)} tier=#{tier_label(tier)}")
 
         json =
           rows
