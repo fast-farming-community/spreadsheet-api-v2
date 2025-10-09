@@ -12,7 +12,6 @@ tasks:
       - MIX_ENV=prod mix release --overwrite --quiet
       - cp /home/cornix/opt/fast-api-v2/env.sh _build/prod/rel/fast_api/releases/*/env.sh
       - task: normalize-release-eol
-      - task: start-prod
 
   normalize-release-eol:
     cmds:
@@ -47,11 +46,6 @@ tasks:
           sleep 2
           kill -KILL $pids 2>/dev/null || true
         fi
-
-  restart-prod:
-    cmds:
-      - task: stop-prod
-      - task: start-prod
 
   status:
     desc: "Show running BEAM processes for fast_api"
