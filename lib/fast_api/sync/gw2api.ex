@@ -72,8 +72,9 @@ defmodule FastApi.Sync.GW2API do
     all_rows =
       item_ids
       |> get_details(@items)
+      |> Enum.filter(fn item -> Map.has_key?(item, :id) and is_integer(item.id) end)
       |> Enum.map(fn item ->
-        tradable? = MapSet.member?(tradable_set, item[:id])
+        tradable? = MapSet.member?(tradable_set, item.id)
         to_item(item, tradable?)
       end)
       |> to_insert_rows(now)
@@ -96,6 +97,7 @@ defmodule FastApi.Sync.GW2API do
     Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
     :ok
   end
+
 
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
