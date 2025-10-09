@@ -63,33 +63,43 @@ defmodule FastApi.Sync.GW2API do
   defp mono_ms(), do: System.monotonic_time(:millisecond)
 
   @spec sync_items() :: :ok
-  def sync_items do
-    item_ids = get_item_ids()
-    commerce_item_ids = get_commerce_item_ids()
-    tradable_set = MapSet.new(commerce_item_ids)
+    def sync_items do
+      item_ids = get_item_ids()
+      commerce_item_ids = get_commerce_item_ids()
+      tradable_set = MapSet.new(commerce_item_ids)
 
-    {tradable_ids, non_tradable_ids} =
-      Enum.split_with(item_ids, &MapSet.member?(tradable_set, &1))
+      {tradable_ids, non_tradable_ids} =
+        Enum.split_with(item_ids, &MapSet.member?(tradable_set, &1))
 
-    now = now_ts()
+      now = now_ts()
 
-    tradable_rows =
-      tradable_ids
-      |> get_details(@items)
-      |> Enum.map(&to_item(&1, true))
-      |> to_insert_rows(now)
+      all_rows =
+        (tradable_ids ++ non_tradable_ids)
+        |> get_details(@items)
+        |> Enum.map(fn item ->
+          tradable? = MapSet.member?(tradable_set, item["id"])
+          to_item(item, tradable?)
+        end)
+        |> to_insert_rows(now)
 
-    non_tradable_rows =
-      non_tradable_ids
-      |> get_details(@items)
-      |> Enum.map(&to_item/1)
-      |> to_insert_rows(now)
+      existing_ids =
+        Fast.Item
+        |> select([i], i.id)
+        |> Repo.all()
+        |> MapSet.new()
 
-    batch_upsert(tradable_rows)
-    batch_upsert(non_tradable_rows)
+      new_ids = MapSet.new(item_ids)
+      removed_ids = MapSet.difference(existing_ids, new_ids)
 
-    :ok
-  end
+      if MapSet.size(removed_ids) > 0 do
+        Repo.delete_all(from i in Fast.Item, where: i.id in ^MapSet.to_list(removed_ids))
+        Logger.info("Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
+      end
+
+      batch_upsert(all_rows)
+      Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
+      :ok
+    end
 
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
