@@ -17,35 +17,29 @@ tasks:
   normalize-release-eol:
     cmds:
       - |
-        set -euo pipefail
-        files=(
-          "{{.REL}}/releases/"*/"env.sh"
-          "{{.BIN}}"
-          "{{.REL}}/bin/"*
-        )
-        for f in "${files[@]}"; do
+        set -eu
+        for f in "{{.REL}}/releases/"*/"env.sh" "{{.BIN}}" "{{.REL}}/bin/"*; do
           [ -f "$f" ] || continue
-          sed -i 's/\r$//' "$f"
-          chmod +x "$f"
+          sed -i 's/\r$//' "$f" || true
+          chmod +x "$f" || true
         done
 
   start-prod:
     cmds:
       - |
-        set -euo pipefail
+        set -eu
         [ -x "{{.BIN}}" ] || { echo "Release not found. Run: task build-prod"; exit 1; }
         "{{.BIN}}" daemon
 
   stop-prod:
     cmds:
       - |
-        set -euo pipefail
+        set -eu
         if [ -x "{{.BIN}}" ]; then
           if "{{.BIN}}" stop >/dev/null 2>&1; then
             exit 0
           fi
         fi
-        # Fallback: kill BEAMs related to this app
         pids=$(ps -eo pid,command | awk '/[f]ast_api.*erts|[e]lixir.*fast_api/ {print $1}')
         if [ -n "$pids" ]; then
           echo "Forcing stop PIDs: $pids"
@@ -62,7 +56,8 @@ tasks:
   status:
     desc: "Show running BEAM processes for fast_api"
     cmds:
-      - ps -eo pid,etime,cmd | egrep -i 'beam.smp|elixir' | egrep -i 'fast_api|erts' || true
+      - |
+        ps -eo pid,etime,cmd | grep -E 'beam.smp|elixir' | grep -E 'fast_api|erts' || true
 
   remote:
     desc: "Attach remote IEx to running node"
