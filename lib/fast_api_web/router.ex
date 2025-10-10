@@ -21,7 +21,6 @@ defmodule FastApiWeb.Router do
 
   pipeline :optional_auth do
     plug FastApiWeb.Plugs.OptionalAuth
-    plug FastApiWeb.Plugs.AssignTier
   end
 
   scope "/api/v1/auth", FastApiWeb do
