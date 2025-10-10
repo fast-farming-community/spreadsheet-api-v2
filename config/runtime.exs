@@ -57,6 +57,13 @@ if config_env() == :prod do
       {"@hourly", {FastApi.Sync.Public, :execute, []}}
     ]
 
+  config :fast_api, FastApi.Health.Gw2Server,
+    base_url: System.get_env("GW2_API_BASE_URL") || "https://api.guildwars2.com",
+    probe_path: System.get_env("GW2_API_PROBE_PATH") || "/v2/build",
+    interval_ms: String.to_integer(System.get_env("GW2_HEALTH_INTERVAL_MS") || "30000"),
+    request_timeout_ms: String.to_integer(System.get_env("GW2_HEALTH_REQUEST_TIMEOUT_MS") || "6000"),
+    stale_after_ms: String.to_integer(System.get_env("GW2_HEALTH_STALE_AFTER_MS") || "90000")
+
   # ## Configuring the mailer
   #
   # In production you need to configure the mailer to use a different adapter.

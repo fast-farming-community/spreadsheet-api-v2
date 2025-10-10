@@ -64,6 +64,8 @@ defmodule FastApiWeb.Router do
     get "/guides", ContentController, :guides
     get "/health", HealthController, :show
     get "/health/stream", HealthController, :stream
+    get "/health-gw2", HealthGw2Controller, :show
+    get "/health-gw2/stream", HealthGw2Controller, :stream
     get "/metadata", MetaController, :index
     get "/search", SearchController, :search
     get "/details/:module/:collection/:item", DetailController, :get_item_page

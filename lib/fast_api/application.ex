@@ -38,6 +38,7 @@ defmodule FastApi.Application do
       # ─────────────────────────────────────────────────────────────────────────
       # Backend health state (pushes updates to PubSub)
       FastApi.Health.Server,
+      FastApi.Health.Gw2Server,
 
       # Scheduler
       FastApi.Scheduler,
