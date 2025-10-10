@@ -5,9 +5,7 @@ defmodule FastApiWeb.FeatureController do
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
 
-  def get_page(conn, %{"collection" => "overview"}) do
-    json(conn, [])
-  end
+  def get_page(conn, %{"collection" => "overview"}), do: json(conn, [])
 
   def get_page(conn, %{"collection" => collection}) do
     :telemetry.execute([:fast_api, :feature, :request], %{count: 1}, %{collection: collection})
@@ -19,21 +17,28 @@ defmodule FastApiWeb.FeatureController do
         |> Enum.sort_by(& &1.order)
         |> then(&json(conn, &1))
 
-      _nil_or_unexpected ->
-        conn
-        |> Plug.Conn.put_status(:not_found)
-        |> json(%{error: "Page not found"})
+      _ ->
+        conn |> Plug.Conn.put_status(:not_found) |> json(%{error: "Page not found"})
     end
   end
 
   defp maybe_preload_tables(nil), do: nil
   defp maybe_preload_tables(%Fast.Page{} = page), do: Repo.preload(page, :tables)
 
-  defp build_table(%Fast.Table{rows: json_rows} = table, conn) do
+  defp build_table(%Fast.Table{} = table, conn) do
     claims = Guardian.Plug.current_claims(conn)
+    tier   = conn.assigns[:tier] || :free
+
+    {_field_used, json_rows} =
+      case tier do
+        :gold   -> {:rows_gold,   table.rows_gold   || table.rows}
+        :silver -> {:rows_silver, table.rows_silver || table.rows}
+        :copper -> {:rows_copper, table.rows_copper || table.rows}
+        _       -> {:rows,        table.rows}
+      end
 
     rows =
-      case Jason.decode(json_rows) do
+      case Jason.decode(json_rows || "[]") do
         {:ok, decoded} when is_list(decoded) -> decoded
         _ -> []
       end
