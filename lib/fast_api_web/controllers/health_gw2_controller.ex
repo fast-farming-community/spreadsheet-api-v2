@@ -1,14 +1,17 @@
 defmodule FastApiWeb.HealthGw2Controller do
   use FastApiWeb, :controller
   import Plug.Conn
-  @topic "health:gw2"
 
-  def show(conn, _params) do
-    s = FastApi.Health.Gw2Server.get()
-    json(conn, Map.take(s, [:up, :since, :updated_at, :reason]))
+  def show(conn, %{"endpoint" => ep}) do
+    key = normalize(ep)
+    s = FastApi.Health.Gw2Server.get(key)
+    json(conn, s)
   end
 
-  def stream(conn, _params) do
+  def stream(conn, %{"endpoint" => ep}) do
+    key = normalize(ep)
+    topic = "health:gw2:" <> to_string(key)
+
     conn =
       conn
       |> put_resp_header("content-type", "text/event-stream; charset=utf-8")
@@ -17,9 +20,8 @@ defmodule FastApiWeb.HealthGw2Controller do
       |> put_resp_header("connection", "keep-alive")
       |> send_chunked(200)
 
-    Phoenix.PubSub.subscribe(FastApi.PubSub, @topic)
-
-    {:ok, conn} = sse(conn, FastApi.Health.Gw2Server.get())
+    Phoenix.PubSub.subscribe(FastApi.PubSub, topic)
+    {:ok, conn} = sse(conn, FastApi.Health.Gw2Server.get(key))
 
     parent = self()
     heartbeat = spawn_link(fn -> heartbeat_loop(parent) end)
@@ -58,4 +60,13 @@ defmodule FastApiWeb.HealthGw2Controller do
     data = Jason.encode!(%{up: up, since: since, updated_at: updated_at, reason: reason})
     chunk(conn, "event: health\ndata: #{data}\n\n")
   end
+
+  defp normalize("items"), do: :items
+  defp normalize("currencies"), do: :currencies
+  defp normalize("commerce_listings"), do: :commerce_listings
+  defp normalize("commerce-prices"), do: :commerce_prices
+  defp normalize("commerce_prices"), do: :commerce_prices
+  defp normalize("exchange_gems"), do: :exchange_gems
+  defp normalize("exchange-gems"), do: :exchange_gems
+  defp normalize(x) when is_binary(x), do: String.to_atom(x)
 end

@@ -41,7 +41,6 @@ if config_env() == :prod do
   maybe_ipv6 = if System.get_env("ECTO_IPV6"), do: [:inet6], else: []
 
   config :fast_api, FastApi.Repo,
-    # ssl: true,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     socket_options: maybe_ipv6
@@ -59,7 +58,13 @@ if config_env() == :prod do
 
   config :fast_api, FastApi.Health.Gw2Server,
     base_url: System.get_env("GW2_API_BASE_URL") || "https://api.guildwars2.com",
-    probe_path: System.get_env("GW2_API_PROBE_PATH") || "/v2/build",
+    endpoints: %{
+      items: "/v2/items",
+      currencies: "/v2/currencies",
+      commerce_listings: "/v2/commerce/listings",
+      commerce_prices: "/v2/commerce/prices",
+      exchange_gems: "/v2/commerce/exchange/gems"
+    },
     interval_ms: String.to_integer(System.get_env("GW2_HEALTH_INTERVAL_MS") || "30000"),
     request_timeout_ms: String.to_integer(System.get_env("GW2_HEALTH_REQUEST_TIMEOUT_MS") || "6000"),
     stale_after_ms: String.to_integer(System.get_env("GW2_HEALTH_STALE_AFTER_MS") || "90000")
