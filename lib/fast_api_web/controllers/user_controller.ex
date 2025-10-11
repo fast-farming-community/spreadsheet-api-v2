@@ -73,12 +73,20 @@ defmodule FastApiWeb.UserController do
   def pre_register(conn, user_params) do
     case Auth.init_user(user_params) do
       {:ok, %User{} = user} ->
-        {:ok, _} =
+        email =
           user
           |> FastApiWeb.Notifiers.PreRegistrationNotifier.pre_register()
-          |> FastApi.Mailer.deliver()
 
-        json(conn, %{success: :ok})
+        case FastApi.Mailer.deliver(email) do
+          {:ok, _} ->
+            json(conn, %{success: :ok})
+
+          {:error, reason} ->
+            require Logger
+            Logger.error("pre_register mail FAILED to=#{user.email} reason=#{inspect(reason)}")
+            # keep response semantics unchanged
+            json(conn, %{success: :ok})
+        end
 
       {:error, changeset} ->
         conn
