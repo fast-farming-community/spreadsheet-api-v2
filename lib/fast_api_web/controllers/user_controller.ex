@@ -84,7 +84,6 @@ defmodule FastApiWeb.UserController do
           {:error, reason} ->
             require Logger
             Logger.error("pre_register mail FAILED to=#{user.email} reason=#{inspect(reason)}")
-            # keep response semantics unchanged
             json(conn, %{success: :ok})
         end
 

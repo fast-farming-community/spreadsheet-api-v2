@@ -217,7 +217,7 @@ defmodule FastApi.Sync.GW2API do
     connection = GoogleApi.Sheets.V4.Connection.new(token.token)
     sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
 
-    # ALWAYS write A..G for all rows
+    # Always write A..G for all rows
     values =
       Enum.map(items, fn i ->
         [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
@@ -271,7 +271,7 @@ defmodule FastApi.Sync.GW2API do
     max = 5
 
     case Finch.request(request, FastApi.Finch) do
-      {:ok, %Finch.Response{status: status} = resp} when status >= 500 and retry < max ->
+      {:ok, %Finch.Response{status: status}} when status >= 500 and retry < max ->
         :timer.sleep(500 * (retry + 1))
         request_json(request, retry + 1)
 
@@ -305,7 +305,7 @@ defmodule FastApi.Sync.GW2API do
     Enum.into(map, %{}, fn {key, value} -> {String.to_atom(key), value} end)
   end
 
-  defp to_item(params, tradable \\ false) do
+  defp to_item(params, tradable) do
     params
     |> Map.put(:tradable, tradable)
     |> then(&struct(Fast.Item, &1))
