@@ -21,39 +21,29 @@ defmodule FastApiWeb.HealthGw2Controller do
       |> send_chunked(200)
 
     Phoenix.PubSub.subscribe(FastApi.PubSub, topic)
-    {:ok, conn} = sse(conn, FastApi.Health.Gw2Server.get(key))
 
-    parent = self()
-    heartbeat = spawn_link(fn -> heartbeat_loop(parent) end)
-    loop(conn, heartbeat)
+    _ = sse(conn, FastApi.Health.Gw2Server.get(key))
+
+    shutdown_ref = Process.send_after(self(), :sse_shutdown, 60_000)
+    loop(conn, shutdown_ref)
   end
 
-  defp loop(conn, heartbeat) do
+  defp loop(conn, shutdown_ref) do
     receive do
+      :sse_shutdown ->
+        _ = chunk(conn, "event: ping\ndata: closing\n\n")
+        Plug.Conn.halt(conn)
+
       {:health, state} ->
         case sse(conn, state) do
-          {:ok, conn} -> loop(conn, heartbeat)
-          {:error, _} -> exit(:normal)
-        end
-      {:heartbeat} ->
-        case chunk(conn, "event: ping\ndata: {}\n\n") do
-          {:ok, conn} -> loop(conn, heartbeat)
-          {:error, _} -> exit(:normal)
+          {:ok, conn} -> loop(conn, shutdown_ref)
+          {:error, _} -> :ok
         end
     after
-      60_000 ->
-        case chunk(conn, "event: ping\ndata: {}\n\n") do
-          {:ok, conn} -> loop(conn, heartbeat)
-          {:error, _} -> exit(:normal)
-        end
+      15_000 ->
+        _ = chunk(conn, "event: ping\ndata: {}\n\n")
+        loop(conn, shutdown_ref)
     end
-  end
-
-  defp heartbeat_loop(parent) do
-    receive do
-    after 25_000 -> :ok end
-    send(parent, {:heartbeat})
-    heartbeat_loop(parent)
   end
 
   defp sse(conn, %{up: up, since: since, updated_at: updated_at, reason: reason}) do

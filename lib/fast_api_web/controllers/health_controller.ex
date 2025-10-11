@@ -9,7 +9,6 @@ defmodule FastApiWeb.HealthController do
     json(conn, %{up: s.up, since: s.since, updated_at: s.updated_at, reason: s.reason})
   end
 
-  # === Server-Sent Events stream ===
   def stream(conn, _params) do
     conn =
       conn
@@ -21,47 +20,28 @@ defmodule FastApiWeb.HealthController do
 
     Phoenix.PubSub.subscribe(FastApi.PubSub, @topic)
 
-    # initial snapshot
-    {:ok, conn} = sse(conn, FastApi.Health.Server.get())
+    _ = sse(conn, FastApi.Health.Server.get())
 
-    # heartbeat every 25s to keep proxies happy
-    parent = self()
-    heartbeat = spawn_link(fn -> heartbeat_loop(parent) end)
-
-    loop(conn, heartbeat)
+    shutdown_ref = Process.send_after(self(), :sse_shutdown, 60_000)
+    loop(conn, shutdown_ref)
   end
 
-  defp loop(conn, heartbeat) do
+  defp loop(conn, shutdown_ref) do
     receive do
+      :sse_shutdown ->
+        _ = chunk(conn, "event: ping\ndata: closing\n\n")
+        Plug.Conn.halt(conn)
+
       {:health, state} ->
         case sse(conn, state) do
-          {:ok, conn} -> loop(conn, heartbeat)
-          {:error, _} -> exit(:normal)
-        end
-
-      {:heartbeat} ->
-        case chunk(conn, "event: ping\ndata: {}\n\n") do
-          {:ok, conn} -> loop(conn, heartbeat)
-          {:error, _} -> exit(:normal)
+          {:ok, conn} -> loop(conn, shutdown_ref)
+          {:error, _} -> :ok
         end
     after
-      60_000 ->
-        # safety ping to keep connection alive
-        case chunk(conn, "event: ping\ndata: {}\n\n") do
-          {:ok, conn} -> loop(conn, heartbeat)
-          {:error, _} -> exit(:normal)
-        end
+      15_000 ->
+        _ = chunk(conn, "event: ping\ndata: {}\n\n")
+        loop(conn, shutdown_ref)
     end
-  end
-
-  defp heartbeat_loop(parent) do
-    receive do
-    after
-      25_000 -> :ok
-    end
-
-    send(parent, {:heartbeat})
-    heartbeat_loop(parent)
   end
 
   defp sse(conn, %{up: up, since: since, updated_at: updated_at, reason: reason}) do
