@@ -21,7 +21,6 @@ config :cors_plug,
     "range","x-client-version"
   ],
   expose: ["content-length", "content-disposition"],
-  credentials: true,
   max_age: 86_400,
   send_preflight_response?: true
 
