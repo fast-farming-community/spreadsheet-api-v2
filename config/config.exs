@@ -1,7 +1,6 @@
 import Config
 
 config :fast_api, FastApiWeb.Endpoint,
-  url: [host: "localhost"],
   render_errors: [view: FastApiWeb.ErrorView, accepts: ~w(html json), layout: false],
   pubsub_server: FastApi.PubSub,
   live_view: [signing_salt: "N7gdh9BX"]
@@ -21,6 +20,7 @@ config :cors_plug,
     "range","x-client-version"
   ],
   expose: ["content-length", "content-disposition"],
+  credentials: true,
   max_age: 86_400,
   send_preflight_response?: true
 
