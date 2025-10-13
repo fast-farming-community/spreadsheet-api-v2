@@ -11,15 +11,20 @@ config :cors_plug,
     "https://fast.farming-community.eu",
     "https://farming-community.eu",
     "https://www.farming-community.eu",
-    "http://localhost:4200",
-    "http://127.0.0.1:4200"
+    ~r/^http:\/\/(localhost|127\.0\.0\.1):\d+$/
   ],
-  methods: ["GET", "POST", "OPTIONS"],
-  headers: ["Authorization", "Content-Type"],
-  expose: ["Content-Length"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+
+  headers: [
+    "authorization","content-type","accept","origin","x-requested-with",
+    "last-event-id","cache-control","pragma","dnt","user-agent","if-modified-since",
+    "range","x-client-version"
+  ],
+  expose: ["content-length", "content-disposition"],
   credentials: true,
   max_age: 86_400,
   send_preflight_response?: true
+
 
 config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,
