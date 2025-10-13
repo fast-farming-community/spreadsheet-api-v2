@@ -23,6 +23,11 @@ defmodule FastApiWeb.Router do
     plug FastApiWeb.Plugs.OptionalAuth
   end
 
+  scope "/api", FastApiWeb do
+    pipe_through :api
+    options "/*path", CorsController, :preflight
+  end
+
   scope "/api/v1/auth", FastApiWeb do
     pipe_through [:api]
     post "/login", UserController, :login
