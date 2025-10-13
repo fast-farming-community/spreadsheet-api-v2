@@ -7,9 +7,8 @@ defmodule FastApiWeb.Endpoint do
     signing_salt: "uQ39CwOK"
   ]
 
+  # Single, proper CORS handling (CORSPlug uses your config)
   plug CORSPlug
-
-  plug :cors_preflight_fastpath
 
   plug :put_vary_origin
 
@@ -41,34 +40,4 @@ defmodule FastApiWeb.Endpoint do
   defp put_vary_origin(conn, _opts) do
     Plug.Conn.put_resp_header(conn, "vary", "origin")
   end
-
-  defp cors_preflight_fastpath(%Plug.Conn{method: "OPTIONS"} = conn, _opts) do
-    origin = List.first(Plug.Conn.get_req_header(conn, "origin"))
-    acrh   = List.first(Plug.Conn.get_req_header(conn, "access-control-request-headers")) || ""
-
-    if allowed_origin?(origin) do
-      conn
-      |> Plug.Conn.put_resp_header("access-control-allow-origin", origin)
-      |> Plug.Conn.put_resp_header("access-control-allow-credentials", "true")
-      |> Plug.Conn.put_resp_header("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD")
-      |> Plug.Conn.put_resp_header("access-control-allow-headers", acrh)
-      |> Plug.Conn.put_resp_header("access-control-max-age", "86400")
-      |> Plug.Conn.send_resp(204, "")
-      |> Plug.Conn.halt()
-    else
-      conn |> Plug.Conn.send_resp(403, "Forbidden") |> Plug.Conn.halt()
-    end
-  end
-
-  defp cors_preflight_fastpath(conn, _opts), do: conn
-
-  @allowed_cors_origins [
-    "https://fast.farming-community.eu",
-    "https://farming-community.eu",
-    "https://www.farming-community.eu"
-  ]
-  @localhost_rx ~r/^http:\/\/(localhost|127\.0\.0\.1):\d+$/
-  defp allowed_origin?(nil), do: false
-  defp allowed_origin?(o) when is_binary(o),
-    do: o in @allowed_cors_origins or Regex.match?(@localhost_rx, o)
 end
