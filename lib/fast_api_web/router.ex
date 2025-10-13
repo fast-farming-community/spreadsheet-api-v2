@@ -24,7 +24,6 @@ defmodule FastApiWeb.Router do
   end
 
   scope "/api", FastApiWeb do
-    pipe_through :api
     options "/*path", CorsController, :preflight
   end
 
