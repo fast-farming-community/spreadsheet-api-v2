@@ -11,7 +11,7 @@ defmodule FastApiWeb.Endpoint do
 
   plug :cors_preflight_fastpath
 
-  plug(fn conn, _ -> Plug.Conn.put_resp_header(conn, "vary", "origin") end)
+  plug :put_vary_origin
 
   plug Plug.Static,
     at: "/",
@@ -37,6 +37,10 @@ defmodule FastApiWeb.Endpoint do
   plug Plug.Session, @session_options
 
   plug FastApiWeb.Router
+
+  defp put_vary_origin(conn, _opts) do
+    Plug.Conn.put_resp_header(conn, "vary", "origin")
+  end
 
   defp cors_preflight_fastpath(%Plug.Conn{method: "OPTIONS"} = conn, _opts) do
     origin = List.first(Plug.Conn.get_req_header(conn, "origin"))
