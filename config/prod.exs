@@ -15,7 +15,4 @@ config :fast_api, FastApiWeb.Endpoint,
     ]
   ]
 
-config :fast_api,
-  throttle_request_limit: 10
-
 config :logger, level: :info
