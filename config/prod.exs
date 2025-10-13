@@ -15,14 +15,6 @@ config :fast_api, FastApiWeb.Endpoint,
     ]
   ]
 
-config :cors_plug,
-  origin: [
-    "https://fast.farming-community.eu",
-    "https://farming-community.eu",
-    "https://www.farming-community.eu"
-  ],
-  methods: ["GET", "POST", "OPTIONS"]
-
 config :fast_api,
   throttle_request_limit: 10
 
