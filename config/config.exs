@@ -13,7 +13,7 @@ config :cors_plug,
     "https://www.farming-community.eu",
     ~r/^http:\/\/(localhost|127\.0\.0\.1):\d+$/
   ],
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
 
   headers: [
     "authorization","content-type","accept","origin","x-requested-with",
