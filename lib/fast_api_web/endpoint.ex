@@ -24,7 +24,6 @@ defmodule FastApiWeb.Endpoint do
   end
 
   plug Plug.RequestId
-  plug FastApiWeb.Plugs.AutoBan
 
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
