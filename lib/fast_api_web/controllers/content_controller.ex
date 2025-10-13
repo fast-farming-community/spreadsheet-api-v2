@@ -121,8 +121,8 @@ defmodule FastApiWeb.ContentController do
   end
 
   def index(conn, _params) do
-    # auto-roll windows before responding
-    roll_forward_about!()
+    # auto-roll windows before responding, exhausts DB Pool? Disabled for now
+    # roll_forward_about!()
 
     data =
       Fast.About
