@@ -10,8 +10,13 @@ defmodule FastApiWeb.HealthController do
   end
 
   def stream(conn, _params) do
+    origin = List.first(get_req_header(conn, "origin"))
+
     conn =
       conn
+      |> (fn c -> if origin, do: put_resp_header(c, "access-control-allow-origin", origin), else: c end).()
+      |> put_resp_header("access-control-allow-credentials", "true")
+      |> put_resp_header("vary", "origin")
       |> put_resp_header("content-type", "text/event-stream; charset=utf-8")
       |> put_resp_header("cache-control", "no-cache, no-transform")
       |> put_resp_header("x-accel-buffering", "no")
