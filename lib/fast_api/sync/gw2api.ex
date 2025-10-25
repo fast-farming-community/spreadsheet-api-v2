@@ -78,7 +78,6 @@ defmodule FastApi.Sync.GW2API do
       tradable_set = MapSet.new(commerce_item_ids)
       now = now_ts()
 
-      # Fetch all details, filter out malformed rows (no :id)
       all_rows =
         item_ids
         |> get_details(@items)
@@ -89,7 +88,6 @@ defmodule FastApi.Sync.GW2API do
         end)
         |> to_insert_rows(now)
 
-      # Delete items that disappeared from API
       existing_ids =
         Fast.Item
         |> select([i], i.id)
@@ -179,7 +177,7 @@ defmodule FastApi.Sync.GW2API do
           batch_with_ts =
             Enum.map(batch, fn row ->
               row
-              |> Map.put(:inserted_at, now)  # NOT NULL compatibility on first insert
+              |> Map.put(:inserted_at, now)
               |> Map.put(:updated_at, now)
             end)
 
@@ -204,7 +202,6 @@ defmodule FastApi.Sync.GW2API do
     try do
       t0 = mono_ms()
 
-      # still refresh prices first (so sheet reflects latest buy/sell)
       {:ok, %{updated: updated_prices}} = sync_prices()
 
       items =
@@ -227,7 +224,6 @@ defmodule FastApi.Sync.GW2API do
       connection = GoogleApi.Sheets.V4.Connection.new(token.token)
       sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
 
-      # Always write A..G for all rows
       values =
         Enum.map(items, fn i ->
           [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
@@ -277,14 +273,22 @@ defmodule FastApi.Sync.GW2API do
     Finch.build(:get, @prices) |> request_json() |> halt_if_disabled()
   end
 
-  # robust: retry timeouts and 5xx with exponential-ish backoff
   defp request_json(request, retry \\ 0) do
     max = 5
 
     case Finch.request(request, FastApi.Finch) do
-      # maintenance splash — do not retry, do not log
-      {:ok, %Finch.Response{status: 503, body: body}} when api_disabled?(body) ->
-        :remote_disabled
+      {:ok, %Finch.Response{status: 503, body: body}} ->
+        if api_disabled?(body) do
+          :remote_disabled
+        else
+          if retry < max do
+            :timer.sleep(500 * (retry + 1))
+            request_json(request, retry + 1)
+          else
+            Logger.error("HTTP 503 from remote; body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
+            []
+          end
+        end
 
       {:ok, %Finch.Response{status: status}} when status >= 500 and retry < max ->
         :timer.sleep(500 * (retry + 1))
@@ -347,14 +351,11 @@ defmodule FastApi.Sync.GW2API do
       Repo.insert_all(
         Fast.Item,
         batch,
-        # keep original inserted_at when row already exists
         on_conflict: {:replace_all_except, [:id, :inserted_at]},
         conflict_target: [:id]
       )
     end)
   end
-
-  # --------------------------- price fetchers ---------------------------
 
   defp fetch_prices_for_chunk(chunk) do
     now = mono_ms()
@@ -389,7 +390,6 @@ defmodule FastApi.Sync.GW2API do
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
     prices = Finch.build(:get, req_prices) |> request_json()
 
-    # stop entire run if maintenance is detected on prices endpoint
     if prices == :remote_disabled, do: throw(:gw2_disabled)
 
     prices_by_id =
@@ -435,7 +435,6 @@ defmodule FastApi.Sync.GW2API do
     try do
       result = Finch.build(:get, req_url) |> request_json()
 
-      # stop entire run if maintenance is detected
       if result == :remote_disabled do
         throw(:gw2_disabled)
       end

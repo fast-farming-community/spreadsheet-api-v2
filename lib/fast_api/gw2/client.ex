@@ -64,9 +64,13 @@ defmodule FastApi.GW2.Client do
   defp with_retry(fun, attempts \\ @retry_attempts)
   defp with_retry(fun, attempts) when attempts > 1 do
     case fun.() do
-      # do not retry and stay silent when the API is temporarily disabled
-      {:ok, 503, body} when api_disabled?(body) ->
-        {:error, :remote_disabled}
+      {:ok, 503, body} ->
+        if api_disabled?(body) do
+          {:error, :remote_disabled}
+        else
+          backoff(attempts)
+          with_retry(fun, attempts - 1)
+        end
 
       {:ok, status, _} when status in 500..599 ->
         backoff(attempts)
@@ -104,7 +108,6 @@ defmodule FastApi.GW2.Client do
     |> Enum.reduce({:ok, []}, fn
       {:ok, {:ok, 200, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
       {:ok, {:ok, 206, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
-      # if any chunk returns maintenance, just ignore that chunk (silent)
       {:ok, {:error, :remote_disabled}}, acc -> acc
       {:exit, _}, acc -> acc
       {:ok, _}, acc -> acc
@@ -129,7 +132,6 @@ defmodule FastApi.GW2.Client do
       {:ok, status, body} when status in [401, 403] ->
         {:error, {:unauthorized, body}}
 
-      # surface maintenance as a clean error to callers
       {:error, :remote_disabled} ->
         {:error, :remote_disabled}
 
