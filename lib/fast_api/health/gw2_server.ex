@@ -35,6 +35,11 @@ defmodule FastApi.Health.Gw2Server do
   end
 
   @impl true
+  def handle_call({:get, :global}, _from, s) do
+    {:reply, global_state(s.probes), s}
+  end
+
+  @impl true
   def handle_call({:get, key}, _from, s) do
     probe = s.probes[key] || %{}
     resp = Map.take(probe, [:up, :since, :updated_at, :reason])
@@ -51,6 +56,11 @@ defmodule FastApi.Health.Gw2Server do
             since = if prev.up == false, do: now(), else: (prev.since || now())
             cur = %{prev | up: true, since: since, updated_at: now(), reason: nil, last_ok_at: now()}
             {Map.put(acc, key, cur), [{key, to_public(cur)} | bcasts]}
+
+          :maintenance ->
+            cur = %{prev | up: false, since: prev.since || now(), updated_at: now(), reason: "maintenance"}
+            {Map.put(acc, key, cur), [{key, to_public(cur)} | bcasts]}
+
           {:error, reason} ->
             staleness = if prev.last_ok_at, do: now() - prev.last_ok_at, else: s.cfg.stale_after_ms + 1
             cur =
@@ -67,6 +77,8 @@ defmodule FastApi.Health.Gw2Server do
       Phoenix.PubSub.broadcast(FastApi.PubSub, topic(key), {:health, payload})
     end)
 
+    Phoenix.PubSub.broadcast(FastApi.PubSub, topic(:global), {:health, global_state(probes2)})
+
     Process.send_after(self(), :probe, s.cfg.interval_ms)
     {:noreply, %{s | probes: probes2}}
   end
@@ -75,6 +87,8 @@ defmodule FastApi.Health.Gw2Server do
     req = Finch.build(:get, url, [{"user-agent", "fast-api-health/1.0"}])
     try do
       case Finch.request(req, FastApi.Finch, receive_timeout: tmo) do
+        {:ok, %Finch.Response{status: code, body: body}} when code == 503 and is_binary(body) ->
+            if maintenance_html?(body), do: :maintenance, else: {:error, "http_503"}
         {:ok, %Finch.Response{status: code}} when code in 200..299 -> :ok
         {:ok, %Finch.Response{status: code}} -> {:error, "http_#{code}"}
         {:error, %Mint.TransportError{reason: r}} -> {:error, "transport_#{inspect(r)}"}
@@ -83,6 +97,39 @@ defmodule FastApi.Health.Gw2Server do
     rescue
       e -> {:error, "exception_#{Exception.message(e)}"}
     end
+  end
+
+  defp maintenance_html?(body) do
+    String.contains?(body, "API Temporarily disabled") or
+      String.contains?(body, "Scheduled reactivation")
+  end
+
+  defp global_state(probes) do
+    list = Map.values(probes)
+    any_maintenance? = Enum.any?(list, fn p -> p.reason == "maintenance" end)
+    up =
+      if any_maintenance? do
+        false
+      else
+        Enum.all?(list, fn p -> p.up == true end)
+      end
+
+    since =
+      if any_maintenance? do
+        list
+        |> Enum.filter(&(&1.reason == "maintenance"))
+        |> Enum.map(&(&1.since || now()))
+        |> Enum.min(fn -> nil end)
+      else
+        case Enum.find(list, &(&1.up == false and &1.reason)) do
+          nil -> Enum.min(Enum.map(list, &(&1.since || now())), fn -> nil end)
+          _ -> nil
+        end
+      end
+
+    updated_at = Enum.max(Enum.map(list, &(&1.updated_at || now())), fn -> now() end)
+    reason = if any_maintenance?, do: "maintenance", else: nil
+    %{up: up, since: since, updated_at: updated_at, reason: reason}
   end
 
   defp topic(key), do: "health:gw2:" <> to_string(key)

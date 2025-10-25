@@ -11,7 +11,6 @@ defmodule FastApi.Sync.Patreon do
     "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
   end
 
-  # --- NEW: normalize client responses ---
   defp fetch_members() do
     case Client.active_patrons() do
       {:ok, members} when is_list(members) ->
