@@ -30,6 +30,13 @@ defmodule FastApi.GW2.Client do
     )
   end
 
+  # detect the maintenance splash so we can stop immediately on 503
+  defp api_disabled?(body) when is_binary(body) do
+    String.contains?(body, "API Temporarily disabled") or
+      String.contains?(body, "Scheduled reactivation")
+  end
+  defp api_disabled?(_), do: false
+
   def get(path, opts \\ []) do
     url = @base <> path
 
@@ -57,6 +64,10 @@ defmodule FastApi.GW2.Client do
   defp with_retry(fun, attempts \\ @retry_attempts)
   defp with_retry(fun, attempts) when attempts > 1 do
     case fun.() do
+      # do not retry and stay silent when the API is temporarily disabled
+      {:ok, 503, body} when api_disabled?(body) ->
+        {:error, :remote_disabled}
+
       {:ok, status, _} when status in 500..599 ->
         backoff(attempts)
         with_retry(fun, attempts - 1)
@@ -93,6 +104,8 @@ defmodule FastApi.GW2.Client do
     |> Enum.reduce({:ok, []}, fn
       {:ok, {:ok, 200, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
       {:ok, {:ok, 206, list}}, {:ok, acc} when is_list(list) -> {:ok, acc ++ list}
+      # if any chunk returns maintenance, just ignore that chunk (silent)
+      {:ok, {:error, :remote_disabled}}, acc -> acc
       {:exit, _}, acc -> acc
       {:ok, _}, acc -> acc
       _, acc -> acc
@@ -116,6 +129,10 @@ defmodule FastApi.GW2.Client do
       {:ok, status, body} when status in [401, 403] ->
         {:error, {:unauthorized, body}}
 
+      # surface maintenance as a clean error to callers
+      {:error, :remote_disabled} ->
+        {:error, :remote_disabled}
+
       {:ok, status, body} ->
         {:error, {:unexpected_status, status, body}}
 
@@ -128,6 +145,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/characters", token: key) end)
     |> case do
       {:ok, 200, json} when is_list(json) -> {:ok, json}
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}                 -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                    -> {:error, reason}
     end
@@ -137,6 +155,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/account/bank", token: key) end)
     |> case do
       {:ok, 200, json} when is_list(json) -> {:ok, json}
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}                 -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                    -> {:error, reason}
     end
@@ -146,6 +165,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/account/materials", token: key) end)
     |> case do
       {:ok, 200, json} when is_list(json) -> {:ok, json}
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}                 -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                    -> {:error, reason}
     end
@@ -155,6 +175,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/account/inventory", token: key) end)
     |> case do
       {:ok, 200, json} when is_list(json) -> {:ok, json}
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}                 -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                    -> {:error, reason}
     end
@@ -164,6 +185,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/account/wallet", token: key) end)
     |> case do
       {:ok, 200, json} when is_list(json) -> {:ok, json}
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}                 -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                    -> {:error, reason}
     end
@@ -179,6 +201,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/characters/#{encoded}/inventory", Keyword.put(opts, :token, key)) end)
     |> case do
       {:ok, 200, json} when is_map(json) -> {:ok, json}
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}                -> {:error, {:unexpected_status, status, body}}
       {:error, reason}                   -> {:error, reason}
     end
@@ -197,6 +220,7 @@ defmodule FastApi.GW2.Client do
     with_retry(fn -> get("/v2/account", token: key) end)
     |> case do
       {:ok, 200, %{} = json} -> {:ok, json}  # includes full GW2 account (has "name")
+      {:error, :remote_disabled} -> {:error, :remote_disabled}
       {:ok, status, body}    -> {:error, {:unexpected_status, status, body}}
       {:error, reason}       -> {:error, reason}
     end

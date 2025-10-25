@@ -16,7 +16,16 @@ defmodule FastApi.Sync.GW2API do
   @flags_cache_ttl_ms 86_400_000
   @flags_cache_table :gw2_flags
 
-  # --------------------------- cache utils ---------------------------
+  # detect the maintenance splash so we can stop immediately on 503
+  defp api_disabled?(body) when is_binary(body) do
+    String.contains?(body, "API Temporarily disabled") or
+      String.contains?(body, "Scheduled reactivation")
+  end
+  defp api_disabled?(_), do: false
+
+  # small helper to convert sentinel into a throw (to abort the whole run)
+  defp halt_if_disabled(:remote_disabled), do: throw(:gw2_disabled)
+  defp halt_if_disabled(other), do: other
 
   defp ensure_flags_cache! do
     case :ets.info(@flags_cache_table) do
@@ -51,8 +60,6 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
-  # --------------------------- misc utils ---------------------------
-
   defp fmt_ms(ms) do
     total = div(ms, 1000)
     mins = div(total, 60)
@@ -63,181 +70,185 @@ defmodule FastApi.Sync.GW2API do
   defp now_ts(), do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
   defp mono_ms(), do: System.monotonic_time(:millisecond)
 
-  # --------------------------- items full refresh ---------------------------
-
   @spec sync_items() :: :ok
   def sync_items do
-    item_ids = get_item_ids()
-    commerce_item_ids = get_commerce_item_ids()
-    tradable_set = MapSet.new(commerce_item_ids)
-    now = now_ts()
+    try do
+      item_ids = get_item_ids() |> halt_if_disabled()
+      commerce_item_ids = get_commerce_item_ids() |> halt_if_disabled()
+      tradable_set = MapSet.new(commerce_item_ids)
+      now = now_ts()
 
-    # Fetch all details, filter out malformed rows (no :id)
-    all_rows =
-      item_ids
-      |> get_details(@items)
-      |> Enum.filter(fn item -> Map.has_key?(item, :id) and is_integer(item.id) end)
-      |> Enum.map(fn item ->
-        tradable? = MapSet.member?(tradable_set, item.id)
-        to_item(item, tradable?)
-      end)
-      |> to_insert_rows(now)
+      # Fetch all details, filter out malformed rows (no :id)
+      all_rows =
+        item_ids
+        |> get_details(@items)
+        |> Enum.filter(fn item -> Map.has_key?(item, :id) and is_integer(item.id) end)
+        |> Enum.map(fn item ->
+          tradable? = MapSet.member?(tradable_set, item.id)
+          to_item(item, tradable?)
+        end)
+        |> to_insert_rows(now)
 
-    # Delete items that disappeared from API
-    existing_ids =
-      Fast.Item
-      |> select([i], i.id)
-      |> Repo.all()
-      |> MapSet.new()
+      # Delete items that disappeared from API
+      existing_ids =
+        Fast.Item
+        |> select([i], i.id)
+        |> Repo.all()
+        |> MapSet.new()
 
-    new_ids = MapSet.new(item_ids)
-    removed_ids = MapSet.difference(existing_ids, new_ids)
+      new_ids = MapSet.new(item_ids)
+      removed_ids = MapSet.difference(existing_ids, new_ids)
 
-    if MapSet.size(removed_ids) > 0 do
-      Repo.delete_all(from(i in Fast.Item, where: i.id in ^MapSet.to_list(removed_ids)))
-      Logger.info("Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
+      if MapSet.size(removed_ids) > 0 do
+        Repo.delete_all(from(i in Fast.Item, where: i.id in ^MapSet.to_list(removed_ids)))
+        Logger.info("Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
+      end
+
+      batch_upsert(all_rows)
+      Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
+      :ok
+    catch
+      :gw2_disabled -> :ok
     end
-
-    batch_upsert(all_rows)
-    Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
-    :ok
   end
-
-  # --------------------------- prices incremental ---------------------------
 
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
-    ensure_flags_cache!()
+    try do
+      ensure_flags_cache!()
 
-    items =
-      Fast.Item
-      |> where([i], i.tradable == true)
-      |> select([i], %{id: i.id, vendor_value: i.vendor_value, buy_old: i.buy, sell_old: i.sell})
-      |> Repo.all()
+      items =
+        Fast.Item
+        |> where([i], i.tradable == true)
+        |> select([i], %{id: i.id, vendor_value: i.vendor_value, buy_old: i.buy, sell_old: i.sell})
+        |> Repo.all()
 
-    pairs =
-      items
-      |> Enum.chunk_every(@step)
-      |> Task.async_stream(&fetch_prices_for_chunk_with_retry/1,
-        max_concurrency: @concurrency,
-        timeout: 30_000,
-        on_timeout: :kill_task,
-        ordered: false
-      )
-      |> Enum.flat_map(fn
-        {:ok, pairs} -> pairs
-        {:exit, reason} ->
-          Logger.error("concurrent fetch failed (final): #{inspect(reason)}")
-          []
-      end)
+      pairs =
+        items
+        |> Enum.chunk_every(@step)
+        |> Task.async_stream(&fetch_prices_for_chunk_with_retry/1,
+          max_concurrency: @concurrency,
+          timeout: 30_000,
+          on_timeout: :kill_task,
+          ordered: false
+        )
+        |> Enum.flat_map(fn
+          {:ok, pairs} -> pairs
+          {:exit, reason} ->
+            Logger.error("concurrent fetch failed (final): #{inspect(reason)}")
+            []
+        end)
 
-    {rows_changed, {_zeroed_bound_no_vendor, changed_ids}} =
-      pairs
-      |> Enum.map_reduce({0, MapSet.new()}, fn
-        {%{id: id, vendor_value: vendor, buy_old: buy_old, sell_old: sell_old},
-         %{"buys" => buys, "sells" => sells, "flags" => flags}}, {acc_zero, acc_ids} ->
-          {buy, sell, zero_inc} =
-            if accountbound_only?(flags) do
-              cond do
-                is_nil(vendor) or vendor == 0 -> {0, 0, 1}
-                true -> {vendor, 0, 0}
+      {rows_changed, {_zeroed_bound_no_vendor, changed_ids}} =
+        pairs
+        |> Enum.map_reduce({0, MapSet.new()}, fn
+          {%{id: id, vendor_value: vendor, buy_old: buy_old, sell_old: sell_old},
+           %{"buys" => buys, "sells" => sells, "flags" => flags}}, {acc_zero, acc_ids} ->
+            {buy, sell, zero_inc} =
+              if accountbound_only?(flags) do
+                cond do
+                  is_nil(vendor) or vendor == 0 -> {0, 0, 1}
+                  true -> {vendor, 0, 0}
+                end
+              else
+                buy0  = buys  && Map.get(buys,  "unit_price")
+                sell0 = sells && Map.get(sells, "unit_price")
+                buy_v = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
+                sell_v = if is_nil(sell0), do: 0, else: sell0
+                {buy_v, sell_v, 0}
               end
+
+            if buy != buy_old or sell != sell_old do
+              row = %{id: id, buy: buy, sell: sell}
+              {row, {acc_zero + zero_inc, MapSet.put(acc_ids, id)}}
             else
-              buy0  = buys  && Map.get(buys,  "unit_price")
-              sell0 = sells && Map.get(sells, "unit_price")
-              buy_v = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
-              sell_v = if is_nil(sell0), do: 0, else: sell0
-              {buy_v, sell_v, 0}
+              {nil, {acc_zero + zero_inc, acc_ids}}
             end
 
-          if buy != buy_old or sell != sell_old do
-            row = %{id: id, buy: buy, sell: sell}
-            {row, {acc_zero + zero_inc, MapSet.put(acc_ids, id)}}
-          else
-            {nil, {acc_zero + zero_inc, acc_ids}}
-          end
+          _other, acc ->
+            {nil, acc}
+        end)
 
-        _other, acc ->
-          {nil, acc}
-      end)
+      rows_changed = Enum.reject(rows_changed, &is_nil/1)
+      now = now_ts()
 
-    rows_changed = Enum.reject(rows_changed, &is_nil/1)
-    now = now_ts()
+      updated =
+        rows_changed
+        |> Enum.chunk_every(5_000)
+        |> Enum.reduce(0, fn batch, acc ->
+          batch_with_ts =
+            Enum.map(batch, fn row ->
+              row
+              |> Map.put(:inserted_at, now)  # NOT NULL compatibility on first insert
+              |> Map.put(:updated_at, now)
+            end)
 
-    updated =
-      rows_changed
-      |> Enum.chunk_every(5_000)
-      |> Enum.reduce(0, fn batch, acc ->
-        batch_with_ts =
-          Enum.map(batch, fn row ->
-            row
-            |> Map.put(:inserted_at, now)  # NOT NULL compatibility on first insert
-            |> Map.put(:updated_at, now)
-          end)
+          {count, _} =
+            Repo.insert_all(
+              Fast.Item,
+              batch_with_ts,
+              on_conflict: {:replace, [:buy, :sell, :updated_at]},
+              conflict_target: [:id]
+            )
 
-        {count, _} =
-          Repo.insert_all(
-            Fast.Item,
-            batch_with_ts,
-            on_conflict: {:replace, [:buy, :sell, :updated_at]},
-            conflict_target: [:id]
-          )
+          acc + count
+        end)
 
-        acc + count
-      end)
-
-    {:ok, %{updated: updated, changed_ids: changed_ids}}
+      {:ok, %{updated: updated, changed_ids: changed_ids}}
+    catch
+      :gw2_disabled -> {:ok, %{updated: 0, changed_ids: MapSet.new()}}
+    end
   end
-
-  # --------------------------- sheets: ALWAYS full rewrite ---------------------------
 
   def sync_sheet do
-    t0 = mono_ms()
+    try do
+      t0 = mono_ms()
 
-    # still refresh prices first (so sheet reflects latest buy/sell)
-    {:ok, %{updated: updated_prices}} = sync_prices()
+      # still refresh prices first (so sheet reflects latest buy/sell)
+      {:ok, %{updated: updated_prices}} = sync_prices()
 
-    items =
-      Fast.Item
-      |> select([i], %{
-        id: i.id,
-        name: i.name,
-        buy: i.buy,
-        sell: i.sell,
-        icon: i.icon,
-        rarity: i.rarity,
-        vendor_value: i.vendor_value
-      })
-      |> order_by([i], asc: i.id)
-      |> Repo.all()
+      items =
+        Fast.Item
+        |> select([i], %{
+          id: i.id,
+          name: i.name,
+          buy: i.buy,
+          sell: i.sell,
+          icon: i.icon,
+          rarity: i.rarity,
+          vendor_value: i.vendor_value
+        })
+        |> order_by([i], asc: i.id)
+        |> Repo.all()
 
-    total_rows = length(items)
+      total_rows = length(items)
 
-    {:ok, token} = Goth.fetch(FastApi.Goth)
-    connection = GoogleApi.Sheets.V4.Connection.new(token.token)
-    sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
+      {:ok, token} = Goth.fetch(FastApi.Goth)
+      connection = GoogleApi.Sheets.V4.Connection.new(token.token)
+      sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
 
-    # Always write A..G for all rows
-    values =
-      Enum.map(items, fn i ->
-        [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
-      end)
+      # Always write A..G for all rows
+      values =
+        Enum.map(items, fn i ->
+          [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
+        end)
 
-    {:ok, _response} =
-      GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
-        connection,
-        sheet_id,
-        "API!A4:G#{4 + total_rows}",
-        body: %{values: values},
-        valueInputOption: "RAW"
-      )
+      {:ok, _response} =
+        GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
+          connection,
+          sheet_id,
+          "API!A4:G#{4 + total_rows}",
+          body: %{values: values},
+          valueInputOption: "RAW"
+        )
 
-    dt = mono_ms() - t0
-    Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
-    :ok
+      dt = mono_ms() - t0
+      Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
+      :ok
+    catch
+      :gw2_disabled -> :ok
+    end
   end
-
-  # --------------------------- HTTP helpers ---------------------------
 
   defp get_details(ids, base_url) do
     ids
@@ -259,11 +270,11 @@ defmodule FastApi.Sync.GW2API do
   end
 
   defp get_item_ids do
-    Finch.build(:get, @items) |> request_json()
+    Finch.build(:get, @items) |> request_json() |> halt_if_disabled()
   end
 
   defp get_commerce_item_ids do
-    Finch.build(:get, @prices) |> request_json()
+    Finch.build(:get, @prices) |> request_json() |> halt_if_disabled()
   end
 
   # robust: retry timeouts and 5xx with exponential-ish backoff
@@ -271,6 +282,10 @@ defmodule FastApi.Sync.GW2API do
     max = 5
 
     case Finch.request(request, FastApi.Finch) do
+      # maintenance splash — do not retry, do not log
+      {:ok, %Finch.Response{status: 503, body: body}} when api_disabled?(body) ->
+        :remote_disabled
+
       {:ok, %Finch.Response{status: status}} when status >= 500 and retry < max ->
         :timer.sleep(500 * (retry + 1))
         request_json(request, retry + 1)
@@ -374,6 +389,9 @@ defmodule FastApi.Sync.GW2API do
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
     prices = Finch.build(:get, req_prices) |> request_json()
 
+    # stop entire run if maintenance is detected on prices endpoint
+    if prices == :remote_disabled, do: throw(:gw2_disabled)
+
     prices_by_id =
       prices
       |> Enum.filter(&match?(%{"id" => _}, &1))
@@ -416,6 +434,11 @@ defmodule FastApi.Sync.GW2API do
 
     try do
       result = Finch.build(:get, req_url) |> request_json()
+
+      # stop entire run if maintenance is detected
+      if result == :remote_disabled do
+        throw(:gw2_disabled)
+      end
 
       if result == [] and attempts > 1 do
         :timer.sleep(backoff)
