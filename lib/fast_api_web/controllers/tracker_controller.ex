@@ -37,6 +37,9 @@ defmodule FastApiWeb.TrackerController do
 
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{ok: false, error: "Upstream unreachable", reason: encodable(info)})
+
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{ok: false, error: "upstream_maintenance"})
     end
   end
 
@@ -50,6 +53,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "upstream_maintenance"})
     end
   end
 
@@ -63,6 +68,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "upstream_maintenance"})
     end
   end
 
@@ -76,6 +83,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "upstream_maintenance"})
     end
   end
 
@@ -89,6 +98,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "upstream_maintenance"})
     end
   end
 
@@ -102,6 +113,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "upstream_maintenance"})
     end
   end
 
@@ -116,6 +129,8 @@ defmodule FastApiWeb.TrackerController do
         conn |> put_status(:bad_gateway) |> json(%{error: "GW2 API error", status: status, upstream: encodable(body)})
       {:error, {:transport, info}} ->
         conn |> put_status(:bad_gateway) |> json(%{error: "Upstream unreachable", reason: encodable(info)})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{error: "upstream_maintenance"})
     end
   end
 
@@ -225,6 +240,8 @@ defmodule FastApiWeb.TrackerController do
         json(conn, %{ok: true, name: name, account: acc})
       {:error, {:unauthorized, _}} ->
         conn |> put_status(:unauthorized) |> json(%{ok: false, error: "invalid_key"})
+      {:error, :remote_disabled} ->
+        conn |> put_status(:service_unavailable) |> json(%{ok: false, error: "upstream_maintenance"})
       {:error, reason} ->
         conn |> put_status(:bad_gateway) |> json(%{ok: false, error: inspect(reason)})
     end
