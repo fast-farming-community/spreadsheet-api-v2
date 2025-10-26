@@ -47,6 +47,7 @@ if config_env() == :prod do
       {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
       {"*/5 * * * *", {FastApi.Sync.Features, :execute_cycle, []}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
+      {"@hourly", {FastApi.Auth, :purge_expired_password_resets, []}},
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
       {"@hourly", {FastApi.Sync.Public, :execute, []}}

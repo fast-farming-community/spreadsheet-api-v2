@@ -20,6 +20,30 @@ defmodule FastApiWeb.UserController do
        end)
   end
 
+  def forgot_password(conn, %{"email" => email}) do
+    _ = Auth.request_password_reset(email)
+    json(conn, %{success: :ok})
+  end
+
+  def reset_password(conn, %{"token" => token} = params) do
+    case Auth.reset_password(token, params) do
+      {:ok, %User{} = user} ->
+        {:ok, access, _} = Auth.Token.access_token(user)
+        {:ok, refresh, _} = Auth.Token.refresh_token(user)
+        json(conn, %{access: access, refresh: refresh})
+
+      {:error, :invalid_or_expired} ->
+        conn
+        |> Plug.Conn.put_status(:unauthorized)
+        |> json(%{errors: ["Invalid or expired reset link"]})
+
+      {:error, %Ecto.Changeset{} = cs} ->
+        conn
+        |> Plug.Conn.put_status(:bad_request)
+        |> json(%{errors: EctoUtils.get_errors(cs)})
+    end
+  end
+
   def change_password(conn, password_params) do
     token = bearer_token(conn)
 
