@@ -39,6 +39,15 @@ defmodule FastApiWeb.Router do
     post "/profile", UserController, :update_profile
   end
 
+  scope "/api/v1/raffle", FastApiWeb do
+    pipe_through [:api, :optional_auth]
+    get  "/",     RaffleController, :public
+
+    pipe_through [:api, :secured]
+    post "/signup", RaffleController, :signup
+    get  "/me",     RaffleController, :me
+  end
+
   scope "/api/v1/tracker", FastApiWeb do
     pipe_through [:api]
 

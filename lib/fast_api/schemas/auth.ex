@@ -24,9 +24,10 @@ defmodule FastApi.Schemas.Auth do
       belongs_to :role, FastApi.Schemas.Auth.Role, references: :name, type: :string
       field :token, :string, default: Ecto.UUID.generate()
       field :verified, :boolean, default: false
-
       field :api_keys, :map, default: %{}
       field :ingame_name, :string
+
+      field :raffle_signed, :boolean, default: false   # <— NEW
 
       timestamps()
     end

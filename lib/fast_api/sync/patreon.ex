@@ -2,7 +2,12 @@ defmodule FastApi.Sync.Patreon do
   @moduledoc "Synchronize database with Patreon data."
   alias FastApi.Auth
   alias FastApi.Patreon.Client
+  alias FastApi.{Repo}
+  alias FastApi.Schemas.Auth.User
+  import Ecto.Query
   require Logger
+
+  defp now_ts(), do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
@@ -13,15 +18,9 @@ defmodule FastApi.Sync.Patreon do
 
   defp fetch_members() do
     case Client.active_patrons() do
-      {:ok, members} when is_list(members) ->
-        {:ok, members}
-
-      {:error, _} = e ->
-        e
-
-      members when is_list(members) ->
-        # Client returned a bare list (e.g., pagination error path). Treat as ok.
-        {:ok, members}
+      {:ok, members} when is_list(members) -> {:ok, members}
+      {:error, _} = e -> e
+      members when is_list(members) -> {:ok, members}
     end
   end
 
@@ -35,6 +34,13 @@ defmodule FastApi.Sync.Patreon do
             %{email: email, role: role}, acc ->
               with user when not is_nil(user) <- Auth.get_user_by_email(email) do
                 _ = Auth.set_role(user, role)
+
+                # auto-sign if paying
+                if role != "free" do
+                  from(u in User, where: u.id == ^user.id and u.raffle_signed == false)
+                  |> Repo.update_all(set: [raffle_signed: true, updated_at: now_ts()])
+                end
+
                 acc + 1
               else
                 _ -> acc
@@ -75,6 +81,13 @@ defmodule FastApi.Sync.Patreon do
             %{email: email} = user, {p, u, a} ->
               role = Map.get(member_map, email, "free")
               _ = Auth.set_role(user, role)
+
+              # auto-sign if paying
+              if role != "free" do
+                from(u in User, where: u.id == ^user.id and u.raffle_signed == false)
+                |> Repo.update_all(set: [raffle_signed: true, updated_at: now_ts()])
+              end
+
               if role == "free", do: {p + 1, u, a}, else: {p, u + 1, a}
 
             _user, acc ->

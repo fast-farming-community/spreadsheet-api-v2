@@ -29,6 +29,10 @@ config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,
   cmd_path: "/usr/sbin/sendmail"
 
+config :fast_api, FastApi.Raffle,
+  api_key: System.get_env("RAFFLE_GW2_API_KEY"),
+  character: System.get_env("RAFFLE_GW2_CHARACTER")
+
 config :fast_api, FastApi.Repo, priv: "priv/fast"
 
 config :fast_api, frontend_base_url: "https://fast.farming-community.eu"

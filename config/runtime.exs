@@ -50,7 +50,10 @@ if config_env() == :prod do
       {"@hourly", {FastApi.Auth, :purge_expired_password_resets, []}},
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
       {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
-      {"@hourly", {FastApi.Sync.Public, :execute, []}}
+      {"@hourly", {FastApi.Sync.Public, :execute, []}},
+      {"@daily",   {FastApi.Raffle, :refresh_items_from_character, []}},
+      {"0 3 1 * *",{FastApi.Raffle, :rollover_new_month, []}},
+      {"55 23 * * *", {FastApi.Raffle, :draw_current_month, []}}
     ]
 
   config :fast_api, FastApi.Health.Gw2Server,
