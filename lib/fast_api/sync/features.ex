@@ -161,7 +161,6 @@ defmodule FastApi.Sync.Features do
   end
 
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt \\ 1)
-
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt)
        when attempt <= @backoff_attempts do
     case GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
@@ -179,7 +178,14 @@ defmodule FastApi.Sync.Features do
         Logger.warning(
           "Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT_EXCEEDED; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})"
         )
+        Process.sleep(wait)
+        fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
+      {:error, %Tesla.Env{status: status}} when status in 500..599 ->
+        wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
+        Logger.warning(
+          "Chunk #{idx}/#{total} pid=#{pid_label} #{status} SERVER_ERROR; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})"
+        )
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
@@ -190,7 +196,7 @@ defmodule FastApi.Sync.Features do
   end
 
   defp fetch_batch_with_backoff(_connection, _ranges, idx, total, pid_label, _attempt) do
-    Logger.error("Chunk #{idx}/#{total} pid=#{pid_label} 429 backoff exhausted")
+    Logger.error("Chunk #{idx}/#{total} pid=#{pid_label} backoff exhausted; treating as rate limited")
     {:error, :rate_limited}
   end
 
@@ -232,6 +238,11 @@ defmodule FastApi.Sync.Features do
 
   defp process_response({:error, {:gsheets_error, ranges}}, _tables, _tier) do
     Logger.error("Error while fetching spreadsheet data (ranges only): #{inspect(ranges)}")
+    []
+  end
+
+  defp process_response({:error, :rate_limited}, _tables, _tier) do
+    Logger.warning("Rate limit/backoff exhausted for a chunk; skipping this chunk this cycle.")
     []
   end
 

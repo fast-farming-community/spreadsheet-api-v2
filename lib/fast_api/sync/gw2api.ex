@@ -23,7 +23,6 @@ defmodule FastApi.Sync.GW2API do
   end
   defp api_disabled?(_), do: false
 
-  # small helper to convert sentinel into a throw (to abort the whole run)
   defp halt_if_disabled(:remote_disabled), do: throw(:gw2_disabled)
   defp halt_if_disabled(other), do: other
 
@@ -198,6 +197,31 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
+  defp sheets_values_update_with_retry(connection, sheet_id, range, values, attempts \\ 5, backoff \\ 1_000) do
+    case GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
+           connection,
+           sheet_id,
+           range,
+           body: %{values: values},
+           valueInputOption: "RAW"
+         ) do
+      {:ok, resp} ->
+        {:ok, resp}
+
+      {:error, %Tesla.Env{status: status} = _env} when status in 500..599 and attempts > 1 ->
+        Logger.warning("Sheets #{status} on update; retrying in #{backoff}ms (#{attempts - 1} left)")
+        :timer.sleep(backoff)
+        sheets_values_update_with_retry(connection, sheet_id, range, values, attempts - 1, backoff * 2)
+
+      {:error, %Tesla.Env{} = env} ->
+        {:error, env}
+
+      other ->
+        other
+    end
+  end
+  # ------------------------------------------------------------------
+
   def sync_sheet do
     try do
       t0 = mono_ms()
@@ -229,18 +253,26 @@ defmodule FastApi.Sync.GW2API do
           [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
         end)
 
-      {:ok, _response} =
-        GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
-          connection,
-          sheet_id,
-          "API!A4:G#{4 + total_rows}",
-          body: %{values: values},
-          valueInputOption: "RAW"
-        )
+      range = "API!A4:G#{4 + total_rows}"
 
-      dt = mono_ms() - t0
-      Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
-      :ok
+      case sheets_values_update_with_retry(connection, sheet_id, range, values) do
+        {:ok, _response} ->
+          dt = mono_ms() - t0
+          Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
+          :ok
+
+        {:error, %Tesla.Env{status: 503}} ->
+          Logger.warning("Sheets is unavailable (503 UNAVAILABLE). Will try again on next schedule.")
+          :ok
+
+        {:error, %Tesla.Env{status: status, body: body}} ->
+          Logger.error("Sheets update failed status=#{status} body_snippet=#{inspect(String.slice(to_string(body || ""), 0, 200))}")
+          :ok
+
+        other ->
+          Logger.error("Sheets update returned unexpected result=#{inspect(other, limit: 200)}")
+          :ok
+      end
     catch
       :gw2_disabled -> :ok
     end
