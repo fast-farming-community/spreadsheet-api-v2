@@ -28,15 +28,6 @@ defmodule FastApi.Raffle do
   end
 
   defp wrap_items(list) when is_list(list), do: %{"items" => list}
-
-  defp normalize_winners(v) do
-    cond do
-      is_map(v) -> Map.get(v, "winners", Map.get(v, :winners, [])) || []
-      is_list(v) -> v
-      true -> []
-    end
-  end
-
   defp wrap_winners(list) when is_list(list), do: %{"winners" => list}
 
   # upsert by month_key to avoid unique violations on concurrent first call
@@ -54,8 +45,8 @@ defmodule FastApi.Raffle do
               %{
                 month_key: key,
                 status: "open",
-                items: %{"items" => []},      # store as MAP
-                winners: %{"winners" => []},  # store as MAP
+                items: %{"items" => []},
+                winners: %{"winners" => []},
                 inserted_at: now,
                 updated_at: now
               }
