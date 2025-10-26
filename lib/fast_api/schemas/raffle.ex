@@ -7,8 +7,8 @@ defmodule FastApi.Schemas.Raffle do
   schema "raffles" do
     field :month_key, :date
     field :status, :string, default: "open"
-    field :items,  :map, default: []
-    field :winners,:map, default: []
+    field :items,  :map
+    field :winners, :map
     timestamps()
   end
 
