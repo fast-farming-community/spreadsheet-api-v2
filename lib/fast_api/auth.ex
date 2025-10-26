@@ -111,7 +111,12 @@ defmodule FastApi.Auth do
   end
 
   def request_password_reset(email) when is_binary(email) do
-    case get_user_by_email(email) do
+    normalized =
+      email
+      |> String.trim()
+      |> String.downcase()
+
+    case get_user_by_email(normalized) do
       %User{verified: true} = user ->
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -124,8 +129,9 @@ defmodule FastApi.Auth do
           )
           |> Repo.one()
 
+        # still return :ok to keep response opaque
         if recent_sent_at && DateTime.diff(now, recent_sent_at, :second) < @reset_min_interval do
-          {:error, :rate_limited}
+          :ok
         else
           token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
           token_hash = :crypto.hash(:sha256, token)
@@ -150,20 +156,24 @@ defmodule FastApi.Auth do
                   FastApi.Mailer.deliver(email_struct)
                 rescue
                   e ->
-                    Logger.error("password reset email render/send failed: #{Exception.format(:error, e, __STACKTRACE__)}")
+                    Logger.error(
+                      "password reset email render/send failed: #{Exception.format(:error, e, __STACKTRACE__)}"
+                    )
                     :ok
                 end
 
               :ok
 
             {:error, changeset} ->
-              Logger.error("password reset insert failed email=#{email} errors=#{inspect(changeset.errors)}")
+              Logger.error(
+                "password reset insert failed email=#{normalized} errors=#{inspect(changeset.errors)}"
+              )
               :ok
           end
         end
 
       _ ->
-        # Do not disclose existence of account
+        # Nonexistent or unverified: do nothing, keep it opaque
         :ok
     end
   end

@@ -21,16 +21,8 @@ defmodule FastApiWeb.UserController do
   end
 
   def forgot_password(conn, %{"email" => email}) do
-    case Auth.request_password_reset(email) do
-      :ok ->
-        json(conn, %{success: :ok, throttled: false})
-
-      {:error, :rate_limited} ->
-        json(conn, %{success: :ok, throttled: true})
-
-      _ ->
-        json(conn, %{success: :ok, throttled: false})
-    end
+    _ = Auth.request_password_reset(email)
+    json(conn, %{success: :ok})
   end
 
   def reset_password(conn, %{"token" => token} = params) do
