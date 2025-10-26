@@ -11,14 +11,15 @@ defmodule FastApi.Raffle do
   @api_key Keyword.get(@cfg, :api_key)
   @character Keyword.get(@cfg, :character)
 
-  defp now_ts(), do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+  # Use DateTime (UTC) to satisfy @timestamps_opts [type: :utc_datetime]
+  defp now_ts(), do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp month_key(date \\ Date.utc_today()) do
     %Date{year: y, month: m} = date
     Date.new!(y, m, 1)
   end
 
-  # Normalize helpers: store maps in DB, expose lists to the rest of the module
+  # Helpers: store maps in DB, expose lists to the rest of the module
   defp normalize_items(v) do
     cond do
       is_map(v) -> Map.get(v, "items", Map.get(v, :items, [])) || []
@@ -45,8 +46,8 @@ defmodule FastApi.Raffle do
               %{
                 month_key: key,
                 status: "open",
-                items: %{"items" => []},
-                winners: %{"winners" => []},
+                items: %{"items" => []},      # store as MAP
+                winners: %{"winners" => []},  # store as MAP
                 inserted_at: now,
                 updated_at: now
               }
