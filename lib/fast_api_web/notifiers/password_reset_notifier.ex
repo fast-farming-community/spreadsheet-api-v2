@@ -3,7 +3,6 @@ defmodule FastApiWeb.Notifiers.PasswordResetNotifier do
     template_root: "lib/fast_api_web/templates",
     template_path: "email"
 
-  alias Swoosh.Email
   alias FastApi.Schemas.Auth.User
 
   def reset_request(%User{} = user, plain_token) do
