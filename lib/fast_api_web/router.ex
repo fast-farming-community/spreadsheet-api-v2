@@ -23,34 +23,39 @@ defmodule FastApiWeb.Router do
     plug FastApiWeb.Plugs.OptionalAuth
   end
 
+  # ---------- AUTH ----------
   scope "/api/v1/auth", FastApiWeb do
     pipe_through [:api]
     post "/login", UserController, :login
     post "/pre-register", UserController, :pre_register
     post "/refresh", UserController, :refresh
     post "/register", UserController, :register
-
     post "/forgot-password", UserController, :forgot_password
     post "/reset-password",  UserController, :reset_password
+  end
 
-    pipe_through :secured
+  scope "/api/v1/auth", FastApiWeb do
+    pipe_through [:api, :secured]
     post "/change-password", UserController, :change_password
     get  "/me", UserController, :me
     post "/profile", UserController, :update_profile
   end
 
+  # ---------- RAFFLE ----------
   scope "/api/v1/raffle", FastApiWeb do
     pipe_through [:api, :optional_auth]
     get  "/",     RaffleController, :public
+  end
 
+  scope "/api/v1/raffle", FastApiWeb do
     pipe_through [:api, :secured]
     post "/signup", RaffleController, :signup
     get  "/me",     RaffleController, :me
   end
 
+  # ---------- TRACKER ----------
   scope "/api/v1/tracker", FastApiWeb do
     pipe_through [:api]
-
     post "/validate-key",           TrackerController, :validate_key
     post "/characters",             TrackerController, :characters
     post "/characters/inventory",   TrackerController, :character_inventory
@@ -65,9 +70,9 @@ defmodule FastApiWeb.Router do
     post "/currencies",             TrackerController, :currencies
   end
 
+  # ---------- GENERAL ----------
   scope "/api/v1", FastApiWeb do
     pipe_through [:api, :optional_auth]
-
     get "/about", ContentController, :index
     get "/builds", ContentController, :builds
     get "/changelog", ContentController, :changelog
