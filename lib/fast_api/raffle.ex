@@ -18,6 +18,27 @@ defmodule FastApi.Raffle do
     Date.new!(y, m, 1)
   end
 
+  # Normalize helpers: store maps in DB, expose lists to the rest of the module
+  defp normalize_items(v) do
+    cond do
+      is_map(v) -> Map.get(v, "items", Map.get(v, :items, [])) || []
+      is_list(v) -> v
+      true -> []
+    end
+  end
+
+  defp wrap_items(list) when is_list(list), do: %{"items" => list}
+
+  defp normalize_winners(v) do
+    cond do
+      is_map(v) -> Map.get(v, "winners", Map.get(v, :winners, [])) || []
+      is_list(v) -> v
+      true -> []
+    end
+  end
+
+  defp wrap_winners(list) when is_list(list), do: %{"winners" => list}
+
   # upsert by month_key to avoid unique violations on concurrent first call
   def current_row() do
     key = month_key()
@@ -29,7 +50,16 @@ defmodule FastApi.Raffle do
         {_count, _} =
           Repo.insert_all(
             RaffleRow,
-            [%{month_key: key, status: "open", items: [], winners: [], inserted_at: now, updated_at: now}],
+            [
+              %{
+                month_key: key,
+                status: "open",
+                items: %{"items" => []},      # store as MAP
+                winners: %{"winners" => []},  # store as MAP
+                inserted_at: now,
+                updated_at: now
+              }
+            ],
             on_conflict: :nothing,
             conflict_target: [:month_key]
           )
@@ -71,7 +101,7 @@ defmodule FastApi.Raffle do
               |> Enum.map(fn {id, qty} -> %{"item_id" => id, "quantity" => qty} end)
 
             r
-            |> Ecto.Changeset.change(%{items: items, updated_at: now_ts()})
+            |> Ecto.Changeset.change(%{items: wrap_items(items), updated_at: now_ts()})
             |> Repo.update()
 
             :ok
@@ -127,7 +157,7 @@ defmodule FastApi.Raffle do
   end
 
   defp do_draw(r) do
-    items = r.items || []
+    items = normalize_items(r.items)
 
     pool =
       from(u in User, where: u.verified == true and u.raffle_signed == true,
@@ -140,7 +170,7 @@ defmodule FastApi.Raffle do
       |> Enum.map(fn %{item_id: item, user_id: uid} -> %{"item_id" => item, "user_id" => uid} end)
 
     r
-    |> Ecto.Changeset.change(%{winners: winners, status: "drawn", updated_at: now_ts()})
+    |> Ecto.Changeset.change(%{winners: wrap_winners(winners), status: "drawn", updated_at: now_ts()})
     |> Repo.update()
 
     {:ok, length(winners)}

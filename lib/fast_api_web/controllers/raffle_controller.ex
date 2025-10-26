@@ -2,10 +2,33 @@ defmodule FastApiWeb.RaffleController do
   use FastApiWeb, :controller
   alias FastApi.Raffle
 
+  defp normalize_items(v) do
+    cond do
+      is_map(v) -> Map.get(v, "items", Map.get(v, :items, [])) || []
+      is_list(v) -> v
+      true -> []
+    end
+  end
+
+  defp normalize_winners(v) do
+    cond do
+      is_map(v) -> Map.get(v, "winners", Map.get(v, :winners, [])) || []
+      is_list(v) -> v
+      true -> []
+    end
+  end
+
   def public(conn, _params) do
     r = Raffle.current_row()
-    items = (r.items || []) |> Enum.map(&%{item_id: &1["item_id"], quantity: &1["quantity"]})
-    json(conn, %{month: r.month_key, status: r.status, items: items, winners: r.winners || []})
+
+    items =
+      r.items
+      |> normalize_items()
+      |> Enum.map(&%{item_id: &1["item_id"], quantity: &1["quantity"]})
+
+    winners = normalize_winners(r.winners)
+
+    json(conn, %{month: r.month_key, status: r.status, items: items, winners: winners})
   end
 
   def signup(conn, _params) do
@@ -20,6 +43,7 @@ defmodule FastApiWeb.RaffleController do
     user = Guardian.Plug.current_resource(conn)
     r = Raffle.current_row()
     weight = if user.role_id != "free", do: 5, else: 1
+
     json(conn, %{
       month: r.month_key,
       signed: user.raffle_signed,
