@@ -10,7 +10,7 @@ defmodule FastApi.Schemas.PasswordReset do
     field :expires_at, :utc_datetime
     field :used_at, :utc_datetime
     belongs_to :user, FastApi.Schemas.Auth.User
-    timestamps(updated_at: false)  # inserted_at will now be UTC
+    timestamps(updated_at: false)
   end
 
   def insert_changeset(pr, attrs) do
@@ -22,6 +22,6 @@ defmodule FastApi.Schemas.PasswordReset do
   end
 
   def mark_used_changeset(pr) do
-    change(pr, used_at: DateTime.utc_now())
+    change(pr, used_at: DateTime.utc_now() |> DateTime.truncate(:second))
   end
 end

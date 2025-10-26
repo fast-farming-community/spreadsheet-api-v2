@@ -123,7 +123,7 @@ defmodule FastApi.Auth do
         token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
         token_hash = :crypto.hash(:sha256, token)
 
-        now = DateTime.utc_now()
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
         expires_at = DateTime.add(now, @reset_ttl_minutes * 60, :second)
 
         cs =
