@@ -10,6 +10,7 @@ defmodule FastApi.Auth do
 
   @required_scope "account"
   @reset_ttl_minutes 60
+  @reset_min_interval 30  # seconds between emails per user
 
   def all_users(), do: Repo.all(from u in User, where: u.verified == true)
 
@@ -35,26 +36,18 @@ defmodule FastApi.Auth do
     end
   end
 
-  def create_user(_) do
-    {:error, :invalid_token}
-  end
+  def create_user(_), do: {:error, :invalid_token}
 
-  def change_password(%User{} = user, params) do
-    user |> User.changeset(params, :update) |> Repo.update()
-  end
+  def change_password(%User{} = user, params),
+    do: user |> User.changeset(params, :update) |> Repo.update()
 
-  def set_role(%User{} = user, role) do
-    user |> Repo.preload(:role) |> User.changeset(role, :role) |> Repo.update()
-  end
+  def set_role(%User{} = user, role),
+    do: user |> Repo.preload(:role) |> User.changeset(role, :role) |> Repo.update()
 
   @doc """
   Update profile. If `api_keys` are provided and non-empty, require a key with the
   `account` scope and overwrite `ingame_name` from `/v2/account`. Otherwise behave
   like a normal profile update.
-  Returns:
-    - {:ok, %User{}}
-    - {:error, :unprocessable_entity, reason}
-    - {:error, %Ecto.Changeset{}}
   """
   def update_profile(%User{} = user, params) when is_map(params) do
     params =
@@ -120,41 +113,57 @@ defmodule FastApi.Auth do
   def request_password_reset(email) when is_binary(email) do
     case get_user_by_email(email) do
       %User{verified: true} = user ->
-        token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-        token_hash = :crypto.hash(:sha256, token)
-
         now = DateTime.utc_now() |> DateTime.truncate(:second)
-        expires_at = DateTime.add(now, @reset_ttl_minutes * 60, :second)
 
-        cs =
-          %PasswordReset{}
-          |> PasswordReset.insert_changeset(%{
-            user_id: user.id,
-            token_hash: token_hash,
-            sent_at: now,
-            expires_at: expires_at
-          })
+        recent_sent_at =
+          from(r in PasswordReset,
+            where: r.user_id == ^user.id,
+            order_by: [desc: r.sent_at],
+            limit: 1,
+            select: r.sent_at
+          )
+          |> Repo.one()
 
-        case Repo.insert(cs) do
-          {:ok, _} ->
-            email_struct =
-              FastApiWeb.Notifiers.PasswordResetNotifier.reset_request(user, token)
+        if recent_sent_at && DateTime.diff(now, recent_sent_at, :second) < @reset_min_interval do
+          {:error, :rate_limited}
+        else
+          token = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+          token_hash = :crypto.hash(:sha256, token)
+          expires_at = DateTime.add(now, @reset_ttl_minutes * 60, :second)
 
-            case FastApi.Mailer.deliver(email_struct) do
-              {:ok, _} ->
-                :ok
+          cs =
+            %PasswordReset{}
+            |> PasswordReset.insert_changeset(%{
+              user_id: user.id,
+              token_hash: token_hash,
+              sent_at: now,
+              expires_at: expires_at
+            })
 
-              {:error, reason} ->
-                Logger.error("password reset mail FAILED to=#{user.email} reason=#{inspect(reason)}")
-                :ok
-            end
+          case Repo.insert(cs) do
+            {:ok, _} ->
+              _ =
+                try do
+                  email_struct =
+                    FastApiWeb.Notifiers.PasswordResetNotifier.reset_request(user, token)
 
-          {:error, changeset} ->
-            Logger.error("password reset insert failed email=#{email} errors=#{inspect(changeset.errors)}")
-            :ok
+                  FastApi.Mailer.deliver(email_struct)
+                rescue
+                  e ->
+                    Logger.error("password reset email render/send failed: #{Exception.format(:error, e, __STACKTRACE__)}")
+                    :ok
+                end
+
+              :ok
+
+            {:error, changeset} ->
+              Logger.error("password reset insert failed email=#{email} errors=#{inspect(changeset.errors)}")
+              :ok
+          end
         end
 
       _ ->
+        # Do not disclose existence of account
         :ok
     end
   end
