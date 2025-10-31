@@ -30,8 +30,11 @@ defmodule FastApi.Application do
       # DB connection pool
       FastApi.Repo,
 
-      # Finch HTTP client for outbound calls (reduced to avoid FD pressure)
-      {Finch, name: FastApi.Finch, pools: %{default: [size: 10, count: 1]}},
+      # Finch HTTP client for outbound calls (isolated pools)
+      {Finch, name: FastApi.Finch, pools: %{
+        default:    [size: 16, count: 1],
+        gw2_health: [size: 6,  count: 1]
+      }},
 
       # ─────────────────────────────────────────────────────────────────────────
       # App-level background processes
