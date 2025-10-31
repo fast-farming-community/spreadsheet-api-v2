@@ -5,45 +5,29 @@ defmodule FastApi.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # ─────────────────────────────────────────────────────────────────────────
       # HTTP endpoint
-      # ─────────────────────────────────────────────────────────────────────────
       FastApiWeb.Endpoint,
 
-      # ─────────────────────────────────────────────────────────────────────────
       # Lightweight local processes
-      # ─────────────────────────────────────────────────────────────────────────
       {PlugAttack.Storage.Ets, name: FastApi.PlugAttack.Storage, clean_period: 60_000},
-
-      # Bounded-concurrency fan-out uses Task.Supervisor
       {Task.Supervisor, name: FastApi.TaskSup},
-
-      # PubSub for health broadcasts (SSE)
       {Phoenix.PubSub, name: FastApi.PubSub},
-
-      # Telemetry (metrics hooks)
       FastApiWeb.Telemetry,
 
-      # ─────────────────────────────────────────────────────────────────────────
       # Core infra
-      # ─────────────────────────────────────────────────────────────────────────
-      # DB connection pool
       FastApi.Repo,
 
-      # Finch HTTP client for outbound calls (isolated pools)
+      # Finch HTTP clients
       {Finch, name: FastApi.Finch, pools: %{
-        default:    [size: 16, count: 1],
-        gw2_health: [size: 6,  count: 1]
+        default: [size: 16, count: 1]
+      }},
+      {Finch, name: FastApi.FinchHealth, pools: %{
+        default: [size: 6, count: 1]
       }},
 
-      # ─────────────────────────────────────────────────────────────────────────
       # App-level background processes
-      # ─────────────────────────────────────────────────────────────────────────
-      # Backend health state
       FastApi.Health.Server,
       FastApi.Health.Gw2Server,
-
-      # Scheduler
       FastApi.Scheduler,
 
       # Google token fetcher
