@@ -13,7 +13,6 @@ config :cors_plug,
     ~r/^http:\/\/(localhost|127\.0\.0\.1):\d+$/
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-
   headers: [
     "authorization","content-type","accept","origin","x-requested-with",
     "last-event-id","cache-control","pragma","dnt","user-agent","if-modified-since",
@@ -24,7 +23,6 @@ config :cors_plug,
   max_age: 86_400,
   send_preflight_response?: true
 
-
 config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,
   cmd_path: "/usr/sbin/sendmail"
@@ -34,7 +32,6 @@ config :fast_api, FastApi.Raffle,
   character: System.get_env("RAFFLE_GW2_CHARACTER")
 
 config :fast_api, FastApi.Repo, priv: "priv/fast"
-
 config :fast_api, frontend_base_url: "https://fast.farming-community.eu"
 
 config :fast_api,
@@ -50,13 +47,17 @@ config :fast_api,
 config :swoosh, :api_client, false
 
 config :logger,
-  level: :info
+  level: :debug,
+  handle_otp_reports: true,
+  handle_sasl_reports: true,
+  truncate: :infinity
 
 config :logger, :console,
-  format: "$time [$level] $message\n"
+  format: "$date $time [$level] [$metadata] $message\n",
+  metadata: [:pid, :module, :function, :line, :mfa, :application, :file, :request_id]
 
 config :phoenix, :logger,
-  level: :warning,
+  level: :debug,
   filter_parameters: ["password", "token", "authorization"]
 
 config :mime, :types, %{

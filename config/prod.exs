@@ -3,4 +3,4 @@ import Config
 config :fast_api, FastApiWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
-config :logger, level: :info
+config :logger, level: :debug
