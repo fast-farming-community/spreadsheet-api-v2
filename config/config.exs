@@ -47,17 +47,14 @@ config :fast_api,
 config :swoosh, :api_client, false
 
 config :logger,
-  level: :debug,
-  handle_otp_reports: true,
-  handle_sasl_reports: true,
-  truncate: :infinity
+  level: :info
 
 config :logger, :console,
-  format: "$date $time [$level] [$metadata] $message\n",
-  metadata: [:pid, :module, :function, :line, :mfa, :application, :file, :request_id]
+  format: "$date $time [$level] $message\n",
+  metadata: [:request_id]
 
 config :phoenix, :logger,
-  level: :debug,
+  level: :info,
   filter_parameters: ["password", "token", "authorization"]
 
 config :mime, :types, %{
