@@ -2,7 +2,6 @@ defmodule FastApi.GW2.Client do
   @moduledoc false
   @base "https://api.guildwars2.com"
 
-  # Slightly higher network timeouts (safer for GW2 spikes)
   @connect_timeout 10_000
   @pool_timeout    10_000
   @receive_timeout 30_000
@@ -15,31 +14,23 @@ defmodule FastApi.GW2.Client do
   @retry_attempts  3
   @retry_base_ms   200
 
-  # Stream timeout ~= worst-case (receive_timeout * retries) + small buffer
   @stream_buffer_ms 5_000
   @stream_timeout (@receive_timeout * @retry_attempts) + @stream_buffer_ms
 
   defp finch_opts(extra) do
     Keyword.merge(
-      [
-        connect_timeout: @connect_timeout,
-        pool_timeout:    @pool_timeout,
-        receive_timeout: @receive_timeout
-      ],
+      [connect_timeout: @connect_timeout, pool_timeout: @pool_timeout, receive_timeout: @receive_timeout],
       extra
     )
   end
 
-  # detect the maintenance splash so we can stop immediately on 503
   defp api_disabled?(body) when is_binary(body) do
-    String.contains?(body, "API Temporarily disabled") or
-      String.contains?(body, "Scheduled reactivation")
+    String.contains?(body, "API Temporarily disabled") or String.contains?(body, "Scheduled reactivation")
   end
   defp api_disabled?(_), do: false
 
   def get(path, opts \\ []) do
     url = @base <> path
-
     headers =
       case Keyword.get(opts, :token) do
         nil   -> []
@@ -49,7 +40,7 @@ defmodule FastApi.GW2.Client do
     http_opts = Keyword.drop(opts, [:token])
     req = Finch.build(:get, url, headers)
 
-    case Finch.request(req, FastApi.Finch, finch_opts(http_opts)) do
+    case Finch.request(req, FastApi.FinchPublic, finch_opts(http_opts)) do
       {:ok, %Finch.Response{status: status, body: body}} ->
         case Jason.decode(body) do
           {:ok, json} -> {:ok, status, json}

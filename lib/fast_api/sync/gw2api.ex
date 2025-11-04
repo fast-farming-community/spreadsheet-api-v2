@@ -308,7 +308,7 @@ defmodule FastApi.Sync.GW2API do
   defp request_json(request, retry \\ 0) do
     max = 5
 
-    case Finch.request(request, FastApi.Finch) do
+    case Finch.request(request, FastApi.FinchJobs) do
       {:ok, %Finch.Response{status: 503, body: body}} ->
         if api_disabled?(body) do
           :remote_disabled

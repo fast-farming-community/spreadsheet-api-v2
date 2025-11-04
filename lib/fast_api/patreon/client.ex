@@ -32,7 +32,7 @@ defmodule FastApi.Patreon.Client do
         {"Authorization", "Bearer #{Application.fetch_env!(:fast_api, :patreon_api_key)}"}
       ]
     )
-    |> Finch.request(FastApi.Finch)
+    |> Finch.request(FastApi.FinchJobs)
     |> then(fn
       {:ok, %Finch.Response{body: body}} ->
         {:ok, Jason.decode!(body, keys: :atoms)}
@@ -55,9 +55,7 @@ defmodule FastApi.Patreon.Client do
     end)
   end
 
-  defp active_patrons(_, patrons) do
-    {:ok, patrons}
-  end
+  defp active_patrons(_, patrons), do: {:ok, patrons}
 
   defp build_patron(%{
          attributes: %{patron_status: "active_patron"} = patron,
@@ -67,7 +65,5 @@ defmodule FastApi.Patreon.Client do
     [Map.put(patron, :role, role)]
   end
 
-  defp build_patron(_) do
-    []
-  end
+  defp build_patron(_), do: []
 end

@@ -29,9 +29,7 @@ defmodule FastApi.Sync.Public do
 
     result =
       case Repo.get_by(Fast.Metadata, name: "public") do
-        nil ->
-          Repo.insert(%Fast.Metadata{name: "public", data: json_data})
-
+        nil -> Repo.insert(%Fast.Metadata{name: "public", data: json_data})
         public_metadata ->
           public_metadata
           |> Fast.Metadata.changeset(%{data: json_data})
@@ -39,12 +37,8 @@ defmodule FastApi.Sync.Public do
       end
 
     dt = System.monotonic_time(:millisecond) - t0
-    ok_count =
-      [changelog_dt, updates_dt, todos_dt]
-      |> Enum.count(&(&1 != ""))
-
+    ok_count = [changelog_dt, updates_dt, todos_dt] |> Enum.count(&(&1 != ""))
     Logger.info("[job] public.execute completed in #{fmt_ms(dt)} files=3 resolved=#{ok_count}")
-
     result
   end
 
@@ -54,7 +48,7 @@ defmodule FastApi.Sync.Public do
       "https://api.github.com/repos/fast-farming-community/public/commits?path=#{filename}&page=1&per_page=1",
       [{"Content-Type", "application/vnd.github+json"}, {"X-GitHub-Api-Version", "2022-11-28"}]
     )
-    |> Finch.request(FastApi.Finch)
+    |> Finch.request(FastApi.FinchJobs)
     |> case do
       {:ok, %Finch.Response{status: status, body: body}} ->
         with {:ok, decoded} <- Jason.decode(body, keys: :atoms),
