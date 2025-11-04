@@ -38,7 +38,7 @@ defmodule FastApiWeb.ContentController do
   # after the previous LNY window ended, move to next year's real LNY
   # updated_at = LNY date (inclusive end)
   # inserted_at = LNY - 21 days (3 weeks before)
-  defp roll_forward_lny! do
+  def roll_forward_lny! do
     Fast.About
     |> where([a], a.title == "Lunar New Year")
     |> where([a], not is_nil(a.inserted_at) and not is_nil(a.updated_at))
@@ -78,7 +78,7 @@ defmodule FastApiWeb.ContentController do
   # Generic roll-forward for everything
   # Adds the minimum number of whole years so that updated_at >= today.
   # Ignores leap years by using 365-day math for the needed count, but applies years via make_interval.
-  defp roll_forward_about! do
+  def roll_forward_about! do
     roll_forward_lny!()
 
     Repo.query!(
