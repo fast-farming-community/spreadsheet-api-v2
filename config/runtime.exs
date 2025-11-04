@@ -44,7 +44,7 @@ if config_env() == :prod do
   config :fast_api, FastApi.Scheduler,
     jobs: [
       {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-      {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
+      # {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
       {"*/5 * * * *", {FastApi.Sync.Features, :execute_cycle, []}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
       {"@hourly", {FastApi.Auth, :purge_expired_password_resets, []}},
