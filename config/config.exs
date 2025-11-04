@@ -50,7 +50,7 @@ config :logger,
   level: :info
 
 config :logger, :console,
-  format: "$date $time [$level] $message\n",
+  format: "$date $time [$level] $message\n"
 
 config :phoenix, :logger,
   level: :warning,
