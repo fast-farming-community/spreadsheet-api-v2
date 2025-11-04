@@ -51,10 +51,9 @@ config :logger,
 
 config :logger, :console,
   format: "$date $time [$level] $message\n",
-  metadata: [:request_id]
 
 config :phoenix, :logger,
-  level: :info,
+  level: :warning,
   filter_parameters: ["password", "token", "authorization"]
 
 config :mime, :types, %{
