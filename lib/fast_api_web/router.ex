@@ -45,6 +45,7 @@ defmodule FastApiWeb.Router do
   scope "/api/v1/raffle", FastApiWeb do
     pipe_through [:api, :optional_auth]
     get  "/",     RaffleController, :public
+    get  "/history", RaffleController, :history
   end
 
   scope "/api/v1/raffle", FastApiWeb do
