@@ -63,47 +63,84 @@ defmodule FastApi.Raffle do
     end
   end
 
-  # DAILY: snapshot items from character inventory into raffles.items
-  def refresh_items_from_character() do
+  # ---------------------------
+  # PRIZES SNAPSHOT (GW2)
+  # ---------------------------
+  # Manual/scheduled snapshot from character inventory into raffles.items.
+  # Accepts optional overrides: refresh_items_from_character(character: "Name", api_key: "KEY")
+  # Fails hard (raise) on missing config or GW2 errors; empty inventory is allowed.
+  def refresh_items_from_character(opts \\ []) do
     r = current_row()
 
-    cond do
-      is_nil(@api_key) or @api_key == "" ->
-        Logger.warning("raffle refresh skipped: RAFFLE_GW2_API_KEY missing")
+    # prefer overrides; fall back to compile-time config
+    key =
+      (Keyword.get(opts, :api_key) || @api_key || "")
+      |> to_string()
+      |> String.trim()
+
+    char =
+      (Keyword.get(opts, :character) || @character || "")
+      |> to_string()
+      |> String.trim()
+
+    if key == "" do
+      raise ArgumentError, "[raffle] RAFFLE_GW2_API_KEY missing (config or override)"
+    end
+
+    if char == "" do
+      raise ArgumentError, "[raffle] RAFFLE_GW2_CHARACTER missing (config or override)"
+    end
+
+    Logger.info("[raffle] refreshing items from character=#{inspect(char)} month=#{r.month_key}")
+
+    case GW2.character_inventory(key, char) do
+      {:ok, %{"bags" => bags}} ->
+        bag_count = Enum.count(bags || [])
+
+        slots =
+          (bags || [])
+          |> Enum.flat_map(fn
+            %{"inventory" => s} when is_list(s) -> s
+            _ -> []
+          end)
+
+        raw_slots = Enum.count(slots)
+
+        items =
+          slots
+          |> Enum.reduce(%{}, fn
+            %{"id" => id, "count" => c}, acc when is_integer(id) ->
+              Map.update(acc, id, max(c, 1), &(&1 + max(c, 1)))
+            _s, acc -> acc
+          end)
+          |> Enum.map(fn {id, qty} -> %{"item_id" => id, "quantity" => qty} end)
+
+        Logger.info("[raffle] parsed bags=#{bag_count} slots=#{raw_slots} unique_items=#{length(items)}")
+
+        r
+        |> Ecto.Changeset.change(%{items: wrap_items(items), updated_at: now_ts()})
+        |> Repo.update()
+
+        Logger.info("[raffle] items written to DB for month=#{r.month_key}")
         :ok
 
-      is_nil(@character) or @character == "" ->
-        Logger.warning("raffle refresh skipped: RAFFLE_GW2_CHARACTER missing")
-        :ok
+      {:ok, other} ->
+        # Unexpected payload shape → crash so you can fix it
+        raise RuntimeError, "[raffle] unexpected character_inventory payload: #{inspect(other, limit: 200)}"
 
-      true ->
-        case GW2.character_inventory(@api_key, @character) do
-          {:ok, %{"bags" => bags}} ->
-            items =
-              bags
-              |> Enum.flat_map(fn
-                %{"inventory" => slots} when is_list(slots) -> slots
-                _ -> []
-              end)
-              |> Enum.reduce(%{}, fn
-                %{"id" => id, "count" => c}, acc when is_integer(id) ->
-                  Map.update(acc, id, max(c, 1), &(&1 + max(c, 1)))
-                _s, acc -> acc
-              end)
-              |> Enum.map(fn {id, qty} -> %{"item_id" => id, "quantity" => qty} end)
+      {:error, err} ->
+        # GW2 client reported an error → crash
+        raise RuntimeError, "[raffle] GW2 character_inventory error: #{inspect(err)}"
 
-            r
-            |> Ecto.Changeset.change(%{items: wrap_items(items), updated_at: now_ts()})
-            |> Repo.update()
-
-            :ok
-
-          other ->
-            Logger.warning("raffle refresh failed: #{inspect(other)}")
-            :ok
-        end
+      other ->
+        # Any other return → crash
+        raise RuntimeError, "[raffle] character_inventory returned unexpected value: #{inspect(other)}"
     end
   end
+
+  # ---------------------------
+  # MONTHLY ROLLOVER / SIGNUP / DRAW
+  # ---------------------------
 
   # MONTHLY (1st): ensure row, auto-sign paying, reset free
   def rollover_new_month() do
