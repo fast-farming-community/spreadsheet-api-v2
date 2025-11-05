@@ -9,7 +9,7 @@ tasks:
     env: { MIX_ENV: prod, MIX_QUIET: "1" }
     cmds:
       - task: stop-prod
-      - MIX_ENV=prod mix release --overwrite --quiet
+      - bash -lc 'set -a; . /home/cornix/opt/fast-api-v2/env.sh; set +a; MIX_ENV=prod mix release --overwrite --quiet'
       - cp /home/cornix/opt/fast-api-v2/env.sh _build/prod/rel/fast_api/releases/*/env.sh
       - task: normalize-release-eol
       - task: start-prod
