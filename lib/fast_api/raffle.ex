@@ -166,7 +166,7 @@ defmodule FastApi.Raffle do
     if count == 1, do: {:ok, :signed}, else: {:error, :not_found}
   end
 
-  # Draw paying=5 tickets, free=1; unique winners per month, one per item (quantity respected)
+  # Draw with per-role ticket weights; unique winners per month, one per item (quantity respected)
   # Guard: only draw on the last calendar day, and don't re-draw if already drawn.
   def draw_current_month() do
     today = Date.utc_today()
@@ -185,14 +185,39 @@ defmodule FastApi.Raffle do
     end
   end
 
+  # ---- Ticket weights ----
+  # "free" => 1, "copper" => 5, "silver" => 10, "gold" => 25, "premium" => 50
+  defp ticket_weight("premium"), do: 50
+  defp ticket_weight("gold"),    do: 25
+  defp ticket_weight("silver"),  do: 10
+  defp ticket_weight("copper"),  do: 5
+  defp ticket_weight(_),         do: 1
+
+  defp present_ingame?(nil), do: false
+  defp present_ingame?(name) when is_binary(name), do: String.trim(name) != ""
+  defp present_ingame?(_), do: false
+
   defp do_draw(r) do
     items = normalize_items(r.items)
 
-    pool =
-      from(u in User, where: u.verified == true and u.raffle_signed == true,
-        select: {u.id, fragment("CASE WHEN ? <> 'free' THEN 5 ELSE 1 END", u.role_id)}
+    raw =
+      from(u in User,
+        where: u.verified == true and u.raffle_signed == true,
+        select: {u.id, u.role_id, u.ingame_name}
       )
       |> Repo.all()
+
+    # Build pool as {user_id, weight}
+    # RULE: exclude ANY user (regardless of role) without ingame_name (no API key)
+    pool =
+      raw
+      |> Enum.reduce([], fn {uid, role, ign}, acc ->
+        if present_ingame?(ign) do
+          [{uid, ticket_weight(role)} | acc]
+        else
+          acc
+        end
+      end)
 
     winners =
       weighted_without_replacement(items, pool)

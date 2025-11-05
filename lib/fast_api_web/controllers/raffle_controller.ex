@@ -20,7 +20,7 @@ defmodule FastApiWeb.RaffleController do
     json(conn, %{month: r.month_key, status: r.status, items: items, winners: r.winners || []})
   end
 
-  # NEW: Previous raffles (exclude current month), newest first, max 12
+  # Previous raffles (exclude current month), newest first, max 12
   def history(conn, _params) do
     %Date{year: y, month: m} = Date.utc_today()
     current_key = Date.new!(y, m, 1)
@@ -59,7 +59,16 @@ defmodule FastApiWeb.RaffleController do
   def me(conn, _params) do
     user = Guardian.Plug.current_resource(conn)
     r = Raffle.current_row()
-    weight = if user.role_id != "free", do: 5, else: 1
+
+    # Keep the same mapping used for the draw:
+    weight =
+      case user.role_id do
+        "premium" -> 50
+        "gold"    -> 25
+        "silver"  -> 10
+        "copper"  -> 5
+        _         -> 1
+      end
 
     json(conn, %{
       month: r.month_key,
