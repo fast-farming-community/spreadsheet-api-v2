@@ -1,7 +1,14 @@
 defmodule FastApi.Raffle do
-  @moduledoc "Monthly raffle with single raffles table + users.raffle_signed."
+  @moduledoc """
+  Monthly raffle with single raffles table + users.raffle_signed.
+
+  Behavior:
+  - Items are snapshot from a configured GW2 character once per day.
+  - Immediately after importing items (once per day), snapshot TP prices for those items.
+  - If the raffle is already drawn, we DO NOT update prices/items anymore (frozen history).
+  """
   import Ecto.Query
-  alias FastApi.{Repo}
+  alias FastApi.Repo
   alias FastApi.Schemas.Raffle, as: RaffleRow
   alias FastApi.Schemas.Auth.User
   alias FastApi.GW2.Client, as: GW2
@@ -66,68 +73,148 @@ defmodule FastApi.Raffle do
   # ---------------------------
   # PRIZES SNAPSHOT (GW2)
   # ---------------------------
+  @doc """
+  Daily job: refresh items from the configured GW2 character.
+
+  After items are written for the **current open** month, we immediately refresh prices once (same daily run).
+  If the current month is already drawn, we skip updates entirely (frozen).
+  """
   def refresh_items_from_character(opts \\ []) do
     r = current_row()
 
-    key =
-      (Keyword.get(opts, :api_key) || @api_key || "")
-      |> to_string()
-      |> String.trim()
+    # If already drawn, do nothing (frozen history)
+    if r.status == "drawn" do
+      Logger.info("[raffle] month=#{r.month_key} is already drawn; skipping item refresh.")
+      return_ok()
+    else
+      key =
+        (Keyword.get(opts, :api_key) || @api_key || "")
+        |> to_string()
+        |> String.trim()
 
-    char =
-      (Keyword.get(opts, :character) || @character || "")
-      |> to_string()
-      |> String.trim()
+      char =
+        (Keyword.get(opts, :character) || @character || "")
+        |> to_string()
+        |> String.trim()
 
-    if key == "" do
-      raise ArgumentError, "[raffle] RAFFLE_GW2_API_KEY missing (config or override)"
+      if key == "" do
+        raise ArgumentError, "[raffle] RAFFLE_GW2_API_KEY missing (config or override)"
+      end
+
+      if char == "" do
+        raise ArgumentError, "[raffle] RAFFLE_GW2_CHARACTER missing (config or override)"
+      end
+
+      Logger.info("[raffle] refreshing items from character=#{inspect(char)} month=#{r.month_key}")
+
+      case GW2.character_inventory(key, char) do
+        {:ok, %{"bags" => bags}} ->
+          bag_count = Enum.count(bags || [])
+
+          slots =
+            (bags || [])
+            |> Enum.flat_map(fn
+              %{"inventory" => s} when is_list(s) -> s
+              _ -> []
+            end)
+
+          raw_slots = Enum.count(slots)
+
+          items =
+            slots
+            |> Enum.reduce(%{}, fn
+              %{"id" => id, "count" => c}, acc when is_integer(id) ->
+                Map.update(acc, id, max(c, 1), &(&1 + max(c, 1)))
+              _s, acc -> acc
+            end)
+            |> Enum.map(fn {id, qty} -> %{"item_id" => id, "quantity" => qty} end)
+
+          Logger.info("[raffle] parsed bags=#{bag_count} slots=#{raw_slots} unique_items=#{length(items)}")
+
+          _ =
+            r
+            |> Ecto.Changeset.change(%{items: wrap_items(items), updated_at: now_ts()})
+            |> Repo.update()
+
+          Logger.info("[raffle] items written to DB for month=#{r.month_key}")
+
+          # Immediately snapshot prices once per day for the open month
+          _ = refresh_prices()
+
+          :ok
+
+        {:ok, other} ->
+          raise RuntimeError, "[raffle] unexpected character_inventory payload: #{inspect(other, limit: 200)}"
+
+        {:error, err} ->
+          raise RuntimeError, "[raffle] GW2 character_inventory error: #{inspect(err)}"
+
+        other ->
+          raise RuntimeError, "[raffle] character_inventory returned unexpected value: #{inspect(other)}"
+      end
     end
+  end
 
-    if char == "" do
-      raise ArgumentError, "[raffle] RAFFLE_GW2_CHARACTER missing (config or override)"
-    end
+  @doc """
+  Merge GW2 TP prices into the current month's items and persist them.
 
-    Logger.info("[raffle] refreshing items from character=#{inspect(char)} month=#{r.month_key}")
+  - Only runs when current month is **open**.
+  - Skips if there are no items.
+  - Does not store timestamps (kept simple).
+  """
+  def refresh_prices() do
+    r = current_row()
 
-    case GW2.character_inventory(key, char) do
-      {:ok, %{"bags" => bags}} ->
-        bag_count = Enum.count(bags || [])
+    if r.status == "drawn" do
+      Logger.info("[raffle] month=#{r.month_key} is drawn; skipping price refresh.")
+      return_ok()
+    else
+      items = normalize_items(r.items)
+      ids = Enum.map(items, & &1["item_id"]) |> Enum.uniq()
 
-        slots =
-          (bags || [])
-          |> Enum.flat_map(fn
-            %{"inventory" => s} when is_list(s) -> s
-            _ -> []
-          end)
-
-        raw_slots = Enum.count(slots)
-
-        items =
-          slots
-          |> Enum.reduce(%{}, fn
-            %{"id" => id, "count" => c}, acc when is_integer(id) ->
-              Map.update(acc, id, max(c, 1), &(&1 + max(c, 1)))
-            _s, acc -> acc
-          end)
-          |> Enum.map(fn {id, qty} -> %{"item_id" => id, "quantity" => qty} end)
-
-        Logger.info("[raffle] parsed bags=#{bag_count} slots=#{raw_slots} unique_items=#{length(items)}")
-
-        r
-        |> Ecto.Changeset.change(%{items: wrap_items(items), updated_at: now_ts()})
-        |> Repo.update()
-
-        Logger.info("[raffle] items written to DB for month=#{r.month_key}")
+      if ids == [] do
+        Logger.info("[raffle] no items to price for month=#{r.month_key}")
         :ok
+      else
+        Logger.info("[raffle] refreshing prices for #{length(ids)} items, month=#{r.month_key}")
 
-      {:ok, other} ->
-        raise RuntimeError, "[raffle] unexpected character_inventory payload: #{inspect(other, limit: 200)}"
+        case GW2.prices(ids) do
+          {:ok, prices} when is_list(prices) ->
+            pmap =
+              prices
+              |> Enum.reduce(%{}, fn p, acc ->
+                id = p["id"] || p[:id]
+                buy = get_in(p, ["buys", "unit_price"]) || get_in(p, [:buys, :unit_price])
+                sell = get_in(p, ["sells", "unit_price"]) || get_in(p, [:sells, :unit_price])
+                if is_integer(id), do: Map.put(acc, id, %{buy: buy, sell: sell}), else: acc
+              end)
 
-      {:error, err} ->
-        raise RuntimeError, "[raffle] GW2 character_inventory error: #{inspect(err)}"
+            enriched =
+              for it <- items do
+                id = it["item_id"]
+                pr = Map.get(pmap, id, %{})
+                it
+                |> Map.put("tp_buy", pr[:buy] || pr["buy"])
+                |> Map.put("tp_sell", pr[:sell] || pr["sell"])
+              end
 
-      other ->
-        raise RuntimeError, "[raffle] character_inventory returned unexpected value: #{inspect(other)}"
+            _ =
+              r
+              |> Ecto.Changeset.change(%{items: wrap_items(enriched), updated_at: now_ts()})
+              |> Repo.update()
+
+            Logger.info("[raffle] prices written to DB for month=#{r.month_key}")
+            :ok
+
+          {:error, err} ->
+            Logger.error("[raffle] prices error: #{inspect(err)}")
+            {:error, err}
+
+          other ->
+            Logger.error("[raffle] prices unexpected payload: #{inspect(other, limit: 200)}")
+            {:error, :unexpected}
+        end
+      end
     end
   end
 
@@ -168,6 +255,8 @@ defmodule FastApi.Raffle do
       if r.status == "drawn" do
         {:ok, 0}
       else
+        # Take a final price snapshot for the open month before freezing
+        _ = refresh_prices()
         do_draw(r)
       end
     else
@@ -214,9 +303,10 @@ defmodule FastApi.Raffle do
         %{"item_id" => item, "user_ign" => ign}
       end)
 
-    r
-    |> Ecto.Changeset.change(%{winners: wrap_winners(winners), status: "drawn", updated_at: now_ts()})
-    |> Repo.update()
+    _ =
+      r
+      |> Ecto.Changeset.change(%{winners: wrap_winners(winners), status: "drawn", updated_at: now_ts()})
+      |> Repo.update()
 
     {:ok, length(winners)}
   end
@@ -239,4 +329,6 @@ defmodule FastApi.Raffle do
     |> elem(1)
     |> Enum.reverse()
   end
+
+  defp return_ok(), do: :ok
 end

@@ -1,23 +1,30 @@
 defmodule FastApiWeb.RaffleController do
   use FastApiWeb, :controller
   alias FastApi.Raffle
-  alias FastApi.{Repo}
+  alias FastApi.Repo
   alias FastApi.Schemas.Raffle, as: RaffleRow
   import Ecto.Query
 
+  # Current month public payload
   def public(conn, _params) do
     r = Raffle.current_row()
 
+    # Pass through enriched items (keep tp_buy/tp_sell), but normalize to a plain list
     items =
-      (r.items || [])
-      |> case do
+      case r.items do
         %{"items" => list} when is_list(list) -> list
         list when is_list(list) -> list
         _ -> []
       end
-      |> Enum.map(&%{item_id: &1["item_id"], quantity: &1["quantity"]})
+      |> Enum.map(fn it ->
+        %{
+          item_id: it["item_id"],
+          quantity: it["quantity"],
+          tp_buy: it["tp_buy"],
+          tp_sell: it["tp_sell"]
+        }
+      end)
 
-    # winners now contain only %{ "item_id" => ..., "user_ign" => ... }
     winners =
       case r.winners do
         %{"winners" => list} when is_list(list) -> list
@@ -46,6 +53,7 @@ defmodule FastApiWeb.RaffleController do
         %{
           month: r.month_key,
           status: r.status,
+          # keep the canonical wrapper to preserve any extra fields for items/winners
           items:
             case r.items do
               %{"items" => _} = m -> m
