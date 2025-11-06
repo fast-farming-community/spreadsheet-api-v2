@@ -4,8 +4,8 @@ defmodule FastApi.Raffle do
 
   Behavior:
   - Items are snapshot from a configured GW2 character once per day.
-  - Immediately after importing items (once per day), snapshot TP prices for those items.
-  - If the raffle is already drawn, we DO NOT update prices/items anymore (frozen history).
+  - Immediately after importing items (once per day), snapshot item metadata (name/icon/rarity) and TP prices (tp_buy/tp_sell).
+  - If the raffle is already drawn, we DO NOT update anything anymore (frozen history).
   """
   import Ecto.Query
   alias FastApi.Repo
@@ -71,20 +71,24 @@ defmodule FastApi.Raffle do
   end
 
   # ---------------------------
-  # PRIZES SNAPSHOT (GW2)
+  # DAILY SNAPSHOT PIPELINE
   # ---------------------------
+
   @doc """
   Daily job: refresh items from the configured GW2 character.
 
-  After items are written for the **current open** month, we immediately refresh prices once (same daily run).
+  After items are written for the **current open** month, we immediately refresh:
+    1) item metadata (name/icon/rarity)
+    2) prices (tp_buy/tp_sell)
+
   If the current month is already drawn, we skip updates entirely (frozen).
   """
   def refresh_items_from_character(opts \\ []) do
     r = current_row()
 
-    # If already drawn, do nothing (frozen history)
+    # Frozen after draw
     if r.status == "drawn" do
-      Logger.info("[raffle] month=#{r.month_key} is already drawn; skipping item refresh.")
+      Logger.info("[raffle] month=#{r.month_key} drawn; skipping item refresh.")
       return_ok()
     else
       key =
@@ -138,7 +142,8 @@ defmodule FastApi.Raffle do
 
           Logger.info("[raffle] items written to DB for month=#{r.month_key}")
 
-          # Immediately snapshot prices once per day for the open month
+          # Enrich metadata and prices once per day for the open month
+          _ = refresh_item_metadata()
           _ = refresh_prices()
 
           :ok
@@ -156,17 +161,84 @@ defmodule FastApi.Raffle do
   end
 
   @doc """
+  Merge GW2 item metadata (name/icon/rarity) into the current month's items and persist them.
+
+  - Only runs when current month is **open**.
+  - Skips if there are no items.
+  """
+  def refresh_item_metadata() do
+    r = current_row()
+
+    if r.status == "drawn" do
+      Logger.info("[raffle] month=#{r.month_key} drawn; skipping metadata refresh.")
+      return_ok()
+    else
+      items = normalize_items(r.items)
+      ids = Enum.map(items, & &1["item_id"]) |> Enum.uniq()
+
+      if ids == [] do
+        Logger.info("[raffle] no items to enrich for month=#{r.month_key}")
+        :ok
+      else
+        Logger.info("[raffle] refreshing metadata for #{length(ids)} items, month=#{r.month_key}")
+
+        case GW2.items(ids) do
+          {:ok, list} when is_list(list) ->
+            imap =
+              list
+              |> Enum.reduce(%{}, fn it, acc ->
+                id = it["id"] || it[:id]
+                name = it["name"] || it[:name]
+                icon = it["icon"] || it[:icon]
+                rarity = it["rarity"] || it[:rarity]
+                if is_integer(id) do
+                  Map.put(acc, id, %{name: name, icon: icon, rarity: rarity})
+                else
+                  acc
+                end
+              end)
+
+            enriched =
+              for it <- items do
+                id = it["item_id"]
+                meta = Map.get(imap, id, %{})
+                it
+                |> Map.put("name", meta[:name] || meta["name"])
+                |> Map.put("icon", meta[:icon] || meta["icon"])
+                |> Map.put("rarity", meta[:rarity] || meta["rarity"])
+              end
+
+            _ =
+              r
+              |> Ecto.Changeset.change(%{items: wrap_items(enriched), updated_at: now_ts()})
+              |> Repo.update()
+
+            Logger.info("[raffle] metadata written to DB for month=#{r.month_key}")
+            :ok
+
+          {:error, err} ->
+            Logger.error("[raffle] items metadata error: #{inspect(err)}")
+            {:error, err}
+
+          other ->
+            Logger.error("[raffle] items unexpected payload: #{inspect(other, limit: 200)}")
+            {:error, :unexpected}
+        end
+      end
+    end
+  end
+
+  @doc """
   Merge GW2 TP prices into the current month's items and persist them.
 
   - Only runs when current month is **open**.
   - Skips if there are no items.
-  - Does not store timestamps (kept simple).
   """
   def refresh_prices() do
     r = current_row()
 
     if r.status == "drawn" do
-      Logger.info("[raffle] month=#{r.month_key} is drawn; skipping price refresh.")
+      Logger.info("[raffle] month=#{r.month_key} drawn; skipping price refresh.")
       return_ok()
     else
       items = normalize_items(r.items)
@@ -255,7 +327,8 @@ defmodule FastApi.Raffle do
       if r.status == "drawn" do
         {:ok, 0}
       else
-        # Take a final price snapshot for the open month before freezing
+        # Final snapshots for open month before freezing
+        _ = refresh_item_metadata()
         _ = refresh_prices()
         do_draw(r)
       end

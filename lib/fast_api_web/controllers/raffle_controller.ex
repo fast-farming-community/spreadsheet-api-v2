@@ -9,7 +9,7 @@ defmodule FastApiWeb.RaffleController do
   def public(conn, _params) do
     r = Raffle.current_row()
 
-    # Pass through enriched items (keep tp_buy/tp_sell), but normalize to a plain list
+    # Pass through enriched items, normalize to a plain list with fields we expose
     items =
       case r.items do
         %{"items" => list} when is_list(list) -> list
@@ -20,6 +20,9 @@ defmodule FastApiWeb.RaffleController do
         %{
           item_id: it["item_id"],
           quantity: it["quantity"],
+          name: it["name"],
+          icon: it["icon"],
+          rarity: it["rarity"],
           tp_buy: it["tp_buy"],
           tp_sell: it["tp_sell"]
         }
@@ -53,7 +56,6 @@ defmodule FastApiWeb.RaffleController do
         %{
           month: r.month_key,
           status: r.status,
-          # keep the canonical wrapper to preserve any extra fields for items/winners
           items:
             case r.items do
               %{"items" => _} = m -> m
