@@ -66,13 +66,9 @@ defmodule FastApi.Raffle do
   # ---------------------------
   # PRIZES SNAPSHOT (GW2)
   # ---------------------------
-  # Manual/scheduled snapshot from character inventory into raffles.items.
-  # Accepts optional overrides: refresh_items_from_character(character: "Name", api_key: "KEY")
-  # Fails hard (raise) on missing config or GW2 errors; empty inventory is allowed.
   def refresh_items_from_character(opts \\ []) do
     r = current_row()
 
-    # prefer overrides; fall back to compile-time config
     key =
       (Keyword.get(opts, :api_key) || @api_key || "")
       |> to_string()
@@ -125,15 +121,12 @@ defmodule FastApi.Raffle do
         :ok
 
       {:ok, other} ->
-        # Unexpected payload shape → crash so you can fix it
         raise RuntimeError, "[raffle] unexpected character_inventory payload: #{inspect(other, limit: 200)}"
 
       {:error, err} ->
-        # GW2 client reported an error → crash
         raise RuntimeError, "[raffle] GW2 character_inventory error: #{inspect(err)}"
 
       other ->
-        # Any other return → crash
         raise RuntimeError, "[raffle] character_inventory returned unexpected value: #{inspect(other)}"
     end
   end
@@ -142,7 +135,6 @@ defmodule FastApi.Raffle do
   # MONTHLY ROLLOVER / SIGNUP / DRAW
   # ---------------------------
 
-  # MONTHLY (1st): ensure row, auto-sign paying, reset free
   def rollover_new_month() do
     _ = current_row()
 
@@ -157,7 +149,6 @@ defmodule FastApi.Raffle do
     :ok
   end
 
-  # FREE users click to opt in; PAYING users are already auto-signed elsewhere.
   def signup(%User{id: id}) do
     {count, _} =
       from(u in User, where: u.id == ^id)
@@ -166,7 +157,6 @@ defmodule FastApi.Raffle do
     if count == 1, do: {:ok, :signed}, else: {:error, :not_found}
   end
 
-  # Draw with per-role ticket weights; unique winners per month, one per item (quantity respected)
   # Guard: only draw on the last calendar day, and don't re-draw if already drawn.
   def draw_current_month() do
     today = Date.utc_today()
@@ -203,17 +193,16 @@ defmodule FastApi.Raffle do
     raw =
       from(u in User,
         where: u.verified == true and u.raffle_signed == true,
-        select: {u.id, u.role_id, u.ingame_name}
+        select: {u.ingame_name, u.role_id}
       )
       |> Repo.all()
 
-    # Build pool as {user_id, weight}
-    # RULE: exclude ANY user (regardless of role) without ingame_name (no API key)
+    # Build pool as {ign, weight}; exclude users without IGN
     pool =
       raw
-      |> Enum.reduce([], fn {uid, role, ign}, acc ->
+      |> Enum.reduce([], fn {ign, role}, acc ->
         if present_ingame?(ign) do
-          [{uid, ticket_weight(role)} | acc]
+          [{String.trim(ign), ticket_weight(role)} | acc]
         else
           acc
         end
@@ -221,7 +210,9 @@ defmodule FastApi.Raffle do
 
     winners =
       weighted_without_replacement(items, pool)
-      |> Enum.map(fn %{item_id: item, user_id: uid} -> %{"item_id" => item, "user_id" => uid} end)
+      |> Enum.map(fn %{item_id: item, user_ign: ign} ->
+        %{"item_id" => item, "user_ign" => ign}
+      end)
 
     r
     |> Ecto.Changeset.change(%{winners: wrap_winners(winners), status: "drawn", updated_at: now_ts()})
@@ -230,9 +221,10 @@ defmodule FastApi.Raffle do
     {:ok, length(winners)}
   end
 
+  # pool: list of {ign :: String.t(), weight :: pos_integer()}
   defp weighted_without_replacement(items, pool) do
     expanded_items = for %{"item_id" => id, "quantity" => q} <- items, _ <- 1..max(q, 1), do: id
-    tickets        = for {uid, w} <- pool, _ <- 1..max(w, 1), do: uid
+    tickets        = for {ign, w} <- pool, _ <- 1..max(w, 1), do: ign
 
     Enum.reduce(expanded_items, {MapSet.new(), [], tickets}, fn item, {used, acc, tix} ->
       avail = Enum.reject(tix, &MapSet.member?(used, &1))
@@ -240,8 +232,8 @@ defmodule FastApi.Raffle do
       if avail == [] do
         {used, acc, tix}
       else
-        pick = Enum.random(avail)
-        {MapSet.put(used, pick), [%{item_id: item, user_id: pick} | acc], tix}
+        pick_ign = Enum.random(avail)
+        {MapSet.put(used, pick_ign), [%{item_id: item, user_ign: pick_ign} | acc], tix}
       end
     end)
     |> elem(1)

@@ -17,7 +17,15 @@ defmodule FastApiWeb.RaffleController do
       end
       |> Enum.map(&%{item_id: &1["item_id"], quantity: &1["quantity"]})
 
-    json(conn, %{month: r.month_key, status: r.status, items: items, winners: r.winners || []})
+    # winners now contain only %{ "item_id" => ..., "user_ign" => ... }
+    winners =
+      case r.winners do
+        %{"winners" => list} when is_list(list) -> list
+        list when is_list(list) -> list
+        _ -> []
+      end
+
+    json(conn, %{month: r.month_key, status: r.status, items: items, winners: winners})
   end
 
   # Previous raffles (exclude current month), newest first, max 12
@@ -38,9 +46,18 @@ defmodule FastApiWeb.RaffleController do
         %{
           month: r.month_key,
           status: r.status,
-          # return as stored; frontend normalizes both array and wrapped map
-          items: r.items || %{"items" => []},
-          winners: r.winners || %{"winners" => []}
+          items:
+            case r.items do
+              %{"items" => _} = m -> m
+              list when is_list(list) -> %{"items" => list}
+              _ -> %{"items" => []}
+            end,
+          winners:
+            case r.winners do
+              %{"winners" => _} = m -> m
+              list when is_list(list) -> %{"winners" => list}
+              _ -> %{"winners" => []}
+            end
         }
       end)
 
@@ -60,7 +77,6 @@ defmodule FastApiWeb.RaffleController do
     user = Guardian.Plug.current_resource(conn)
     r = Raffle.current_row()
 
-    # Keep the same mapping used for the draw:
     weight =
       case user.role_id do
         "premium" -> 50
