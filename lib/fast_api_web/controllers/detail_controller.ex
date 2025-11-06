@@ -1,6 +1,5 @@
 defmodule FastApiWeb.DetailController do
   use FastApiWeb, :controller
-
   alias FastApi.Auth.Restrictions
   alias FastApi.Repo
   alias FastApi.Schemas.Fast
@@ -8,16 +7,20 @@ defmodule FastApiWeb.DetailController do
   import Ecto.Query
   require Logger
 
-  # ─────────────────────────────
-  # Small JSON helpers
-
   defp json_404(conn), do: send_resp(conn, 404, ~s({"error":"not_found"}))
   defp json_400(conn), do: send_resp(conn, 400, ~s({"error":"bad_request"}))
 
   defp present?(v) when is_binary(v), do: String.trim(v) != ""
   defp present?(_), do: false
 
-  # Safe JSON decode; never raises
+  defp normalize_slug(nil), do: nil
+  defp normalize_slug(v) when is_binary(v) do
+    v
+    |> String.trim()
+    |> String.replace(~r/\s+/, "-")
+    |> String.replace(~r/-+/, "-")
+  end
+
   defp decode_json(nil), do: {:ok, nil}
   defp decode_json(""),  do: {:ok, nil}
   defp decode_json(body) do
@@ -27,7 +30,6 @@ defmodule FastApiWeb.DetailController do
     end
   end
 
-  # Decode rows expected to be a JSON array; returns [] on problems (with logging)
   defp decode_rows_list(rows_json, context) do
     case decode_json(rows_json) do
       {:ok, list} when is_list(list) ->
@@ -47,16 +49,11 @@ defmodule FastApiWeb.DetailController do
     end
   end
 
-  # ─────────────────────────────
-  # PUBLIC
-
-  # Defensive version: validates params, handles not found, no crashes on nil JSON.
   def get_item_page(conn, params) do
     module     = Map.get(params, "module")
-    collection = Map.get(params, "collection")
-    item       = Map.get(params, "item")
+    collection = Map.get(params, "collection") |> normalize_slug()
+    item       = Map.get(params, "item")       |> normalize_slug()
 
-    # Guard against nil/blank params (prevents MatchError)
     if not (present?(module) and present?(collection) and present?(item)) do
       return_bad_request(conn)
     else
@@ -67,10 +64,8 @@ defmodule FastApiWeb.DetailController do
 
       claims = Guardian.Plug.current_claims(conn)
 
-      # Find the detail record safely (may be nil)
       detail = get_detail_safe(module, collection, item)
 
-      # If nothing found → 404
       if is_nil(detail) do
         json_404(conn)
       else
@@ -81,7 +76,6 @@ defmodule FastApiWeb.DetailController do
           |> Plug.Conn.put_status(:unauthorized)
           |> json(%{error: "Invalid or Expired Access Token"})
         else
-          # Load the rows/description for this detail key; handle nils safely
           rec =
             from(t in Fast.DetailTable,
               where: t.key == ^item,
@@ -92,7 +86,6 @@ defmodule FastApiWeb.DetailController do
             )
             |> Repo.one()
 
-          # If no DB row matched, return 404
           if is_nil(rec) do
             json_404(conn)
           else
@@ -104,12 +97,6 @@ defmodule FastApiWeb.DetailController do
     end
   end
 
-  # ─────────────────────────────
-  # PRIVATE
-
-  # Safe version of your original get_detail/3:
-  #  - Never Jason.decode!/1 on nil
-  #  - Works for both "*-details" and "page with tables" branches
   defp get_detail_safe(module, collection, item) do
     if String.contains?(module, "details") do
       feature = String.replace(module, "-details", "")
