@@ -24,10 +24,12 @@ defmodule FastApiWeb.HealthController do
       |> send_chunked(200)
 
     Phoenix.PubSub.subscribe(FastApi.PubSub, @topic)
+    
+    _ = chunk(conn, "retry: 1000\n\n")
 
     _ = sse(conn, FastApi.Health.Server.get())
 
-    shutdown_ref = Process.send_after(self(), :sse_shutdown, 60_000)
+    shutdown_ref = Process.send_after(self(), :sse_shutdown, 10 * 60_000)
     loop(conn, shutdown_ref)
   end
 
@@ -43,7 +45,7 @@ defmodule FastApiWeb.HealthController do
           {:error, _} -> :ok
         end
     after
-      15_000 ->
+      10_000 ->
         _ = chunk(conn, "event: ping\ndata: {}\n\n")
         loop(conn, shutdown_ref)
     end
