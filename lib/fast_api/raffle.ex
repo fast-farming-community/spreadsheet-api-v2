@@ -291,6 +291,37 @@ defmodule FastApi.Raffle do
   end
 
   # ---------------------------
+  # PUBLIC STATS FOR CURRENT MONTH
+  # ---------------------------
+
+  @doc """
+  Current-month public stats for the draw pool:
+
+  - entrants: number of eligible users (verified + raffle_signed + has IGN)
+  - tickets: sum of ticket weights across eligible users
+
+  Patrons without IGN are NOT counted (cannot win).
+  """
+  def current_stats() do
+    raw =
+      from(u in User,
+        where: u.verified == true and u.raffle_signed == true,
+        select: {u.ingame_name, u.role_id}
+      )
+      |> Repo.all()
+
+    eligible = Enum.filter(raw, fn {ign, _role} -> present_ingame?(ign) end)
+    entrants = length(eligible)
+
+    tickets =
+      Enum.reduce(eligible, 0, fn {_ign, role}, acc ->
+        acc + ticket_weight(role)
+      end)
+
+    %{entrants: entrants, tickets: tickets}
+  end
+
+  # ---------------------------
   # MONTHLY ROLLOVER / SIGNUP / DRAW
   # ---------------------------
 
@@ -338,7 +369,6 @@ defmodule FastApi.Raffle do
   end
 
   # ---- Ticket weights ----
-  # "free" => 1, "copper" => 5, "silver" => 10, "gold" => 25, "premium" => 50
   defp ticket_weight("premium"), do: 50
   defp ticket_weight("gold"),    do: 25
   defp ticket_weight("silver"),  do: 10
@@ -384,7 +414,6 @@ defmodule FastApi.Raffle do
     {:ok, length(winners)}
   end
 
-  # pool: list of {ign :: String.t(), weight :: pos_integer()}
   defp weighted_without_replacement(items, pool) do
     expanded_items = for %{"item_id" => id, "quantity" => q} <- items, _ <- 1..max(q, 1), do: id
     tickets        = for {ign, w} <- pool, _ <- 1..max(w, 1), do: ign

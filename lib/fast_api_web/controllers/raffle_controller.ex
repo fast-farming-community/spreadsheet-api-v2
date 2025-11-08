@@ -5,11 +5,9 @@ defmodule FastApiWeb.RaffleController do
   alias FastApi.Schemas.Raffle, as: RaffleRow
   import Ecto.Query
 
-  # Current month public payload
   def public(conn, _params) do
     r = Raffle.current_row()
 
-    # Pass through enriched items, normalize to a plain list with fields we expose
     items =
       case r.items do
         %{"items" => list} when is_list(list) -> list
@@ -35,10 +33,18 @@ defmodule FastApiWeb.RaffleController do
         _ -> []
       end
 
-    json(conn, %{month: r.month_key, status: r.status, items: items, winners: winners})
+    stats = Raffle.current_stats()
+
+    json(conn, %{
+      month: r.month_key,
+      status: r.status,
+      items: items,
+      winners: winners,
+      entries_count: stats.entrants,
+      tickets_pool: stats.tickets
+    })
   end
 
-  # Previous raffles (exclude current month), newest first, max 12
   def history(conn, _params) do
     %Date{year: y, month: m} = Date.utc_today()
     current_key = Date.new!(y, m, 1)
