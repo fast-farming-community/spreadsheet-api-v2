@@ -9,12 +9,24 @@ defmodule FastApi.Sync.GW2API do
 
   @items "https://api.guildwars2.com/v2/items"
   @prices "https://api.guildwars2.com/v2/commerce/prices"
+
   @step 200
-  @concurrency min(System.schedulers_online() * 2, 8)
-  @chunk_attempts 3
-  @chunk_backoff_ms 1_500
+  @concurrency 4
   @flags_cache_ttl_ms 86_400_000
   @flags_cache_table :gw2_flags
+
+  # --- token bucket per endpoint (2 req/sec) ---
+  @rl_interval_ms 1_000
+  @rl_qps 2
+
+  defp rl_wait(bucket) do
+    case ExRated.check_rate(bucket, @rl_interval_ms, @rl_qps) do
+      {:ok, _} -> :ok
+      {:error, _} ->
+        Process.sleep(100)
+        rl_wait(bucket)
+    end
+  end
 
   # detect the maintenance splash so we can stop immediately on 503
   defp api_disabled?(body) when is_binary(body) do
@@ -74,36 +86,43 @@ defmodule FastApi.Sync.GW2API do
     try do
       item_ids = get_item_ids() |> halt_if_disabled()
       commerce_item_ids = get_commerce_item_ids() |> halt_if_disabled()
-      tradable_set = MapSet.new(commerce_item_ids)
-      now = now_ts()
 
-      all_rows =
-        item_ids
-        |> get_details(@items)
-        |> Enum.filter(fn item -> Map.has_key?(item, :id) and is_integer(item.id) end)
-        |> Enum.map(fn item ->
-          tradable? = MapSet.member?(tradable_set, item.id)
-          to_item(item, tradable?)
-        end)
-        |> to_insert_rows(now)
+      # Quiet skip on upstream failure to avoid destructive delete
+      if item_ids == [] or commerce_item_ids == [] do
+        # no logs per your “silent on failure” rule
+        :ok
+      else
+        tradable_set = MapSet.new(commerce_item_ids)
+        now = now_ts()
 
-      existing_ids =
-        Fast.Item
-        |> select([i], i.id)
-        |> Repo.all()
-        |> MapSet.new()
+        all_rows =
+          item_ids
+          |> get_details(@items)
+          |> Enum.filter(fn item -> Map.has_key?(item, :id) and is_integer(item.id) end)
+          |> Enum.map(fn item ->
+            tradable? = MapSet.member?(tradable_set, item.id)
+            to_item(item, tradable?)
+          end)
+          |> to_insert_rows(now)
 
-      new_ids = MapSet.new(item_ids)
-      removed_ids = MapSet.difference(existing_ids, new_ids)
+        existing_ids =
+          Fast.Item
+          |> select([i], i.id)
+          |> Repo.all()
+          |> MapSet.new()
 
-      if MapSet.size(removed_ids) > 0 do
-        Repo.delete_all(from(i in Fast.Item, where: i.id in ^MapSet.to_list(removed_ids)))
-        Logger.info("Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
+        new_ids = MapSet.new(item_ids)
+        removed_ids = MapSet.difference(existing_ids, new_ids)
+
+        if MapSet.size(removed_ids) > 0 do
+          Repo.delete_all(from(i in Fast.Item, where: i.id in ^MapSet.to_list(removed_ids)))
+          Logger.info("Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
+        end
+
+        batch_upsert(all_rows)
+        Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
+        :ok
       end
-
-      batch_upsert(all_rows)
-      Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
-      :ok
     catch
       :gw2_disabled -> :ok
     end
@@ -123,7 +142,7 @@ defmodule FastApi.Sync.GW2API do
       pairs =
         items
         |> Enum.chunk_every(@step)
-        |> Task.async_stream(&fetch_prices_for_chunk_with_retry/1,
+        |> Task.async_stream(&fetch_prices_for_chunk/1,
           max_concurrency: @concurrency,
           timeout: 30_000,
           on_timeout: :kill_task,
@@ -131,9 +150,7 @@ defmodule FastApi.Sync.GW2API do
         )
         |> Enum.flat_map(fn
           {:ok, pairs} -> pairs
-          {:exit, reason} ->
-            Logger.error("concurrent fetch failed (final): #{inspect(reason)}")
-            []
+          _ -> []
         end)
 
       {rows_changed, {_zeroed_bound_no_vendor, changed_ids}} =
@@ -197,7 +214,8 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
-  defp sheets_values_update_with_retry(connection, sheet_id, range, values, attempts \\ 5, backoff \\ 1_000) do
+  # Sheets updater
+  defp sheets_values_update_with_retry(connection, sheet_id, range, values, _attempts \\ 1, _backoff \\ 0) do
     case GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_update(
            connection,
            sheet_id,
@@ -205,22 +223,11 @@ defmodule FastApi.Sync.GW2API do
            body: %{values: values},
            valueInputOption: "RAW"
          ) do
-      {:ok, resp} ->
-        {:ok, resp}
-
-      {:error, %Tesla.Env{status: status} = _env} when status in 500..599 and attempts > 1 ->
-        Logger.warning("Sheets #{status} on update; retrying in #{backoff}ms (#{attempts - 1} left)")
-        :timer.sleep(backoff)
-        sheets_values_update_with_retry(connection, sheet_id, range, values, attempts - 1, backoff * 2)
-
-      {:error, %Tesla.Env{} = env} ->
-        {:error, env}
-
-      other ->
-        other
+      {:ok, resp} -> {:ok, resp}
+      {:error, %Tesla.Env{} = env} -> {:error, env}
+      other -> other
     end
   end
-  # ------------------------------------------------------------------
 
   def sync_sheet do
     try do
@@ -260,18 +267,9 @@ defmodule FastApi.Sync.GW2API do
           dt = mono_ms() - t0
           Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
           :ok
-
-        {:error, %Tesla.Env{status: 503}} ->
-          Logger.warning("Sheets is unavailable (503 UNAVAILABLE). Will try again on next schedule.")
-          :ok
-
-        {:error, %Tesla.Env{status: status, body: body}} ->
-          Logger.error("Sheets update failed status=#{status} body_snippet=#{inspect(String.slice(to_string(body || ""), 0, 200))}")
-          :ok
-
-        other ->
-          Logger.error("Sheets update returned unexpected result=#{inspect(other, limit: 200)}")
-          :ok
+        {:error, %Tesla.Env{status: 503}} -> :ok
+        {:error, %Tesla.Env{}} -> :ok
+        _other -> :ok
       end
     catch
       :gw2_disabled -> :ok
@@ -282,7 +280,7 @@ defmodule FastApi.Sync.GW2API do
     ids
     |> Enum.chunk_every(@step)
     |> Task.async_stream(
-      fn chunk -> get_details_chunk_with_retry(chunk, base_url) end,
+      fn chunk -> get_details_chunk(chunk, base_url) end,
       max_concurrency: @concurrency,
       timeout: 30_000,
       on_timeout: :kill_task,
@@ -290,65 +288,47 @@ defmodule FastApi.Sync.GW2API do
     )
     |> Enum.flat_map(fn
       {:ok, list} -> list
-      {:exit, reason} ->
-        Logger.error("items fetch failed (final): #{inspect(reason)}")
-        []
+      _ -> []
     end)
     |> Enum.map(&keys_to_atoms/1)
   end
 
   defp get_item_ids do
-    Finch.build(:get, @items) |> request_json() |> halt_if_disabled()
+    rl_wait("gw2:items")
+    case Finch.build(:get, @items) |> request_json() do
+      :remote_disabled -> :remote_disabled
+      :error -> []
+      other -> other
+    end
   end
 
   defp get_commerce_item_ids do
-    Finch.build(:get, @prices) |> request_json() |> halt_if_disabled()
+    rl_wait("gw2:prices")
+    case Finch.build(:get, @prices) |> request_json() do
+      :remote_disabled -> :remote_disabled
+      :error -> []
+      other -> other
+    end
   end
 
-  defp request_json(request, retry \\ 0) do
-    max = 5
-
+  # --- JSON REQUEST (no retry) ---
+  defp request_json(request) do
     case Finch.request(request, FastApi.FinchJobs) do
       {:ok, %Finch.Response{status: 503, body: body}} ->
-        if api_disabled?(body) do
-          :remote_disabled
-        else
-          if retry < max do
-            :timer.sleep(500 * (retry + 1))
-            request_json(request, retry + 1)
-          else
-            Logger.error("HTTP 503 from remote; body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
-            []
-          end
-        end
+        if api_disabled?(body), do: :remote_disabled, else: :error
 
-      {:ok, %Finch.Response{status: status}} when status >= 500 and retry < max ->
-        :timer.sleep(500 * (retry + 1))
-        request_json(request, retry + 1)
-
-      {:ok, %Finch.Response{status: status, body: body}} when status >= 500 ->
-        Logger.error("HTTP #{status} from remote; body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
-        []
+      {:ok, %Finch.Response{status: status}} when status >= 500 ->
+        :error
 
       {:ok, %Finch.Response{status: _status, body: body}} ->
         case Jason.decode(body) do
           {:ok, decoded} when is_list(decoded) -> decoded
           {:ok, decoded} when is_map(decoded)  -> [decoded]
-          {:ok, _other} ->
-            Logger.error("Unexpected JSON shape")
-            []
-          {:error, error} ->
-            Logger.error("Failed to decode JSON: #{inspect(error)} body_snippet=#{inspect(String.slice(to_string(body), 0, 200))}")
-            []
+          _ -> :error
         end
 
-      {:error, %Mint.TransportError{reason: :timeout}} when retry < max ->
-        :timer.sleep(500 * (retry + 1))
-        request_json(request, retry + 1)
-
-      {:error, error} ->
-        Logger.error("HTTP request error: #{inspect(error)}")
-        []
+      {:error, _} ->
+        :error
     end
   end
 
@@ -389,7 +369,10 @@ defmodule FastApi.Sync.GW2API do
     end)
   end
 
+  # --- fetch for a chunk of prices ---
   defp fetch_prices_for_chunk(chunk) do
+    :timer.sleep(:rand.uniform(400)) # one-time jitter to de-sync 4 workers
+
     now = mono_ms()
     ids = Enum.map(chunk, & &1.id)
 
@@ -403,7 +386,8 @@ defmodule FastApi.Sync.GW2API do
       end)
 
     if misses != [] do
-      result = get_details_chunk_with_retry(misses, @items)
+      rl_wait("gw2:items")
+      result = get_details_chunk(misses, @items)
       Enum.each(result, fn %{"id" => id, "flags" => flags} ->
         flags_insert(id, flags || [], now)
       end)
@@ -420,9 +404,14 @@ defmodule FastApi.Sync.GW2API do
       |> Map.new()
 
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
-    prices = Finch.build(:get, req_prices) |> request_json()
 
-    if prices == :remote_disabled, do: throw(:gw2_disabled)
+    rl_wait("gw2:prices")
+    prices =
+      case Finch.build(:get, req_prices) |> request_json() do
+        :remote_disabled -> throw(:gw2_disabled)
+        :error -> []
+        other -> other
+      end
 
     prices_by_id =
       prices
@@ -437,55 +426,21 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
-  defp fetch_prices_for_chunk_with_retry(chunk, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
-    :timer.sleep(:rand.uniform(300))
-    try do
-      res = fetch_prices_for_chunk(chunk)
-      cond do
-        res == [] and attempts > 1 ->
-          :timer.sleep(backoff)
-          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
-        res == [] -> []
-        true -> res
-      end
-    rescue
-      e ->
-        Logger.warning("prices error=#{Exception.message(e)}; retrying? #{attempts > 1}")
-        if attempts > 1 do
-          :timer.sleep(backoff)
-          fetch_prices_for_chunk_with_retry(chunk, attempts - 1, backoff * 2)
-        else
-          []
-        end
-    end
-  end
-
-  defp get_details_chunk_with_retry(chunk, base_url, attempts \\ @chunk_attempts, backoff \\ @chunk_backoff_ms) do
-    :timer.sleep(:rand.uniform(300))
+  # --- items/prices details for a chunk (no retry) ---
+  defp get_details_chunk(chunk, base_url) do
+    :timer.sleep(:rand.uniform(400))
     req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
 
-    try do
-      result = Finch.build(:get, req_url) |> request_json()
+    if String.contains?(base_url, "/v2/commerce/prices"), do: rl_wait("gw2:prices"), else: rl_wait("gw2:items")
 
-      if result == :remote_disabled do
-        throw(:gw2_disabled)
-      end
+    result =
+      Finch.build(:get, req_url)
+      |> request_json()
 
-      if result == [] and attempts > 1 do
-        :timer.sleep(backoff)
-        get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
-      else
-        result
-      end
-    rescue
-      e ->
-        Logger.warning("items error=#{Exception.message(e)}; retrying? #{attempts > 1} url=#{req_url}")
-        if attempts > 1 do
-          :timer.sleep(backoff)
-          get_details_chunk_with_retry(chunk, base_url, attempts - 1, backoff * 2)
-        else
-          []
-        end
+    cond do
+      result == :remote_disabled -> throw(:gw2_disabled)
+      result in [:error, []] -> []
+      true -> result
     end
   end
 end
