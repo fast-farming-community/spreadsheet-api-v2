@@ -215,9 +215,18 @@ defmodule FastApiWeb.UserController do
             ingame_name: updated.ingame_name || nil
           })
 
+        # invalid keys or missing 'account' permission
         {:error, :unprocessable_entity, msg} ->
           conn
           |> Plug.Conn.put_status(:unprocessable_entity)
+          |> Plug.Conn.put_resp_header("x-error-code", "invalid_key")
+          |> json(%{errors: [msg]})
+
+        # GW2 maintenance/unreachable
+        {:error, :upstream_unavailable, msg} ->
+          conn
+          |> Plug.Conn.put_status(:service_unavailable)
+          |> Plug.Conn.put_resp_header("x-error-code", "upstream_maintenance")
           |> json(%{errors: [msg]})
 
         {:error, %Ecto.Changeset{} = changeset} ->

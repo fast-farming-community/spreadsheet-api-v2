@@ -44,45 +44,117 @@ defmodule FastApi.Auth do
   def set_role(%User{} = user, role),
     do: user |> Repo.preload(:role) |> User.changeset(role, :role) |> Repo.update()
 
+  defp key_has_account?(key) when is_binary(key) do
+    case GW2.tokeninfo(key) do
+      {:ok, %{permissions: perms}} ->
+        has =
+          perms
+          |> Enum.map(&String.downcase/1)
+          |> Enum.member?(@required_scope)
+
+        if has, do: :ok, else: :invalid
+
+      {:error, {:unauthorized, _}} -> :invalid
+      {:error, :remote_disabled} -> :unavailable
+      {:error, {:transport, _}} -> :unavailable
+      _ -> :unavailable
+    end
+  end
+
+  defp pick_account_key(keys) when is_list(keys) do
+    saw_unavailable? =
+      Enum.reduce_while(keys, false, fn k, saw_unavail ->
+        case key_has_account?(k) do
+          :ok -> throw({:found, k})
+          :invalid -> {:cont, saw_unavail}
+          :unavailable -> {:cont, true}
+        end
+      end)
+
+    if saw_unavailable?, do: {:error, :unavailable}, else: {:error, :invalid}
+  catch
+    {:found, key} -> {:ok, key}
+  end
+
   @doc """
-  Update profile. If `api_keys` are provided and non-empty, require a key with the
-  `account` scope and overwrite `ingame_name` from `/v2/account`. Otherwise behave
-  like a normal profile update.
+  Strict profile update.
+
+  - Only saves keys if changed AND at least one key is confirmed valid (has 'account' perm).
+  - On success, fetches `/v2/account` and persists ingame_name.
+  - On invalid keys → 422, on GW2 down → 503.
+  - Empty map clears keys and ingame_name.
   """
   def update_profile(%User{} = user, params) when is_map(params) do
-    params =
+    incoming_keys_map =
       case Map.get(params, "api_keys") do
-        m when is_map(m) and map_size(m) > 0 ->
-          keys =
-            m
-            |> Map.values()
-            |> Enum.map(&String.trim/1)
-            |> Enum.reject(&(&1 == ""))
+        m when is_map(m) -> m
+        _ -> nil
+      end
 
-          case first_key_with_account(keys) do
-            nil ->
-              throw({:unprocessable_entity, "API key missing 'account' permission or invalid; cannot read in-game name."})
+    incoming_keys_list =
+      case incoming_keys_map do
+        nil -> []
+        m ->
+          m
+          |> Map.values()
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+      end
 
-            key ->
-              case GW2.account(key) do
+    existing_keys_map = user.api_keys || %{}
+    existing_keys_list =
+      existing_keys_map
+      |> Map.values()
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    keys_changed? = MapSet.new(incoming_keys_list) != MapSet.new(existing_keys_list)
+
+    params =
+      cond do
+        incoming_keys_map == nil ->
+          params
+
+        map_size(incoming_keys_map) == 0 ->
+          params
+          |> Map.put("api_keys", %{})
+          |> Map.put("ingame_name", nil)
+
+        not keys_changed? ->
+          params
+
+        true ->
+          case pick_account_key(incoming_keys_list) do
+            {:ok, account_key} ->
+              case GW2.account(account_key) do
                 {:ok, %{"name" => ign}} when is_binary(ign) and ign != "" ->
                   Map.put(params, "ingame_name", ign)
+
+                {:error, :remote_disabled} ->
+                  throw({:upstream_unavailable, "GW2 API maintenance; try again later."})
+
+                {:error, {:transport, _}} ->
+                  throw({:upstream_unavailable, "GW2 API unreachable; try again later."})
 
                 _ ->
                   throw({:unprocessable_entity, "Could not read account name from GW2 API."})
               end
-          end
 
-        _ ->
-          params
+            {:error, :invalid} ->
+              throw({:unprocessable_entity, "API key invalid or missing required 'account' permission."})
+
+            {:error, :unavailable} ->
+              throw({:upstream_unavailable, "GW2 validation unavailable; please try again later."})
+          end
       end
 
     case user |> User.changeset(params, :profile) |> Repo.update() do
       {:ok, updated} -> {:ok, updated}
-      {:error, cs}   -> {:error, cs}
+      {:error, cs} -> {:error, cs}
     end
   catch
     {:unprocessable_entity, msg} -> {:error, :unprocessable_entity, msg}
+    {:upstream_unavailable, msg} -> {:error, :upstream_unavailable, msg}
   end
 
   def delete_unverified() do
@@ -92,29 +164,8 @@ defmodule FastApi.Auth do
     )
   end
 
-  defp first_key_with_account(keys) when is_list(keys) do
-    Enum.find_value(keys, fn key ->
-      case GW2.tokeninfo(key) do
-        {:ok, %{permissions: perms}} ->
-          perms
-          |> Enum.map(&String.downcase/1)
-          |> Enum.member?(@required_scope)
-          |> case do
-               true -> key
-               false -> nil
-             end
-
-        _ ->
-          nil
-      end
-    end)
-  end
-
   def request_password_reset(email) when is_binary(email) do
-    normalized =
-      email
-      |> String.trim()
-      |> String.downcase()
+    normalized = email |> String.trim() |> String.downcase()
 
     case get_user_by_email(normalized) do
       %User{verified: true} = user ->
@@ -129,7 +180,6 @@ defmodule FastApi.Auth do
           )
           |> Repo.one()
 
-        # still return :ok to keep response opaque
         if recent_sent_at && DateTime.diff(now, recent_sent_at, :second) < @reset_min_interval do
           :ok
         else
@@ -150,31 +200,23 @@ defmodule FastApi.Auth do
             {:ok, _} ->
               _ =
                 try do
-                  email_struct =
-                    FastApiWeb.Notifiers.PasswordResetNotifier.reset_request(user, token)
-
+                  email_struct = FastApiWeb.Notifiers.PasswordResetNotifier.reset_request(user, token)
                   FastApi.Mailer.deliver(email_struct)
                 rescue
                   e ->
-                    Logger.error(
-                      "password reset email render/send failed: #{Exception.format(:error, e, __STACKTRACE__)}"
-                    )
+                    Logger.error("password reset email failed: #{Exception.format(:error, e, __STACKTRACE__)}")
                     :ok
                 end
 
               :ok
 
             {:error, changeset} ->
-              Logger.error(
-                "password reset insert failed email=#{normalized} errors=#{inspect(changeset.errors)}"
-              )
+              Logger.error("password reset insert failed email=#{normalized} errors=#{inspect(changeset.errors)}")
               :ok
           end
         end
 
-      _ ->
-        # Nonexistent or unverified: do nothing, keep it opaque
-        :ok
+      _ -> :ok
     end
   end
 
@@ -201,8 +243,6 @@ defmodule FastApi.Auth do
           {:error, cs}
       end
     else
-      nil -> {:error, :invalid_or_expired}
-      false -> {:error, :invalid_or_expired}
       _ -> {:error, :invalid_or_expired}
     end
   end

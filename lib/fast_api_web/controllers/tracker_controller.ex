@@ -48,20 +48,31 @@ defmodule FastApiWeb.TrackerController do
         end
 
       {:error, {:unauthorized, _}} ->
-        conn |> put_status(:bad_request) |> json_safe(%{ok: false, error: "Invalid API key"})
+        conn
+        |> put_status(:bad_request)
+        |> json_safe(%{ok: false, error: "Invalid API key"})
 
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{ok: false, error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{ok: false, error: "GW2 API error", status: status, upstream: body})
 
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{ok: false, error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{ok: false, error: "Upstream unreachable", reason: info})
 
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{ok: false, error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{ok: false, error: "upstream_maintenance"})
 
       other ->
-        # Defensive: handle non-expected shapes
-        conn |> put_status(:bad_gateway) |> json_safe(%{ok: false, error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{ok: false, error: "unexpected", upstream: other})
     end
   end
 
@@ -71,14 +82,28 @@ defmodule FastApiWeb.TrackerController do
   def characters(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.characters(key) do
       {:ok, names} -> json_safe(conn, names)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{error: "upstream_maintenance"})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
 
@@ -88,14 +113,28 @@ defmodule FastApiWeb.TrackerController do
   def account_bank(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_bank(key) do
       {:ok, items} -> json_safe(conn, items)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{error: "upstream_maintenance"})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
 
@@ -105,14 +144,28 @@ defmodule FastApiWeb.TrackerController do
   def account_materials(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_materials(key) do
       {:ok, materials} -> json_safe(conn, materials)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{error: "upstream_maintenance"})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
 
@@ -122,14 +175,28 @@ defmodule FastApiWeb.TrackerController do
   def account_inventory(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_inventory(key) do
       {:ok, shared} -> json_safe(conn, shared)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{error: "upstream_maintenance"})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
 
@@ -139,14 +206,28 @@ defmodule FastApiWeb.TrackerController do
   def account_wallet(conn, %{"key" => key}) when is_binary(key) do
     case FastApi.GW2.Client.account_wallet(key) do
       {:ok, wallet} -> json_safe(conn, wallet)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{error: "upstream_maintenance"})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
 
@@ -157,14 +238,28 @@ defmodule FastApiWeb.TrackerController do
       when is_binary(key) and is_binary(character) do
     case FastApi.GW2.Client.character_inventory(key, character) do
       {:ok, inv} -> json_safe(conn, inv)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{error: "upstream_maintenance"})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
 
@@ -204,7 +299,6 @@ defmodule FastApiWeb.TrackerController do
               {[Map.put(encodable(inv), "character", name) | oks], errs}
 
             {:ok, {:error, reason}} ->
-              # keep silent per your preference; collect but don't render
               {oks, [%{character: name, error: encodable(reason)} | errs]}
 
             {:exit, _} ->
@@ -224,14 +318,25 @@ defmodule FastApiWeb.TrackerController do
 
     case FastApi.GW2.Client.items(ids) do
       {:ok, list} -> json_safe(conn, list)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
+
   def items(conn, _),
     do: return_bad_request(conn, "Missing ids")
 
@@ -240,14 +345,25 @@ defmodule FastApiWeb.TrackerController do
 
     case FastApi.GW2.Client.prices(ids) do
       {:ok, list} -> json_safe(conn, list)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
+
   def prices(conn, _),
     do: return_bad_request(conn, "Missing ids")
 
@@ -256,14 +372,25 @@ defmodule FastApiWeb.TrackerController do
 
     case FastApi.GW2.Client.currencies(ids) do
       {:ok, list} -> json_safe(conn, list)
+
       {:error, {:unexpected_status, status, body}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "GW2 API error", status: status, upstream: body})
+
       {:error, {:transport, info}} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "Upstream unreachable", reason: info})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{error: "Upstream unreachable", reason: info})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{error: "unexpected", upstream: other})
     end
   end
+
   def currencies(conn, _),
     do: return_bad_request(conn, "Missing ids")
 
@@ -279,14 +406,28 @@ defmodule FastApiWeb.TrackerController do
     case FastApi.GW2.Client.account(key) do
       {:ok, %{"name" => name} = acc} ->
         json_safe(conn, %{ok: true, name: name, account: acc})
+
       {:error, {:unauthorized, _}} ->
-        conn |> put_status(:unauthorized) |> json_safe(%{ok: false, error: "invalid_key"})
+        conn
+        |> put_status(:unauthorized)
+        |> json_safe(%{ok: false, error: "invalid_key"})
+
       {:error, :remote_disabled} ->
-        conn |> put_status(:service_unavailable) |> json_safe(%{ok: false, error: "upstream_maintenance"})
+        conn
+        |> put_status(:service_unavailable)
+        |> put_resp_header("x-error-code", "upstream_maintenance")
+        |> json_safe(%{ok: false, error: "upstream_maintenance"})
+
       {:error, reason} ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{ok: false, error: reason})
+        conn
+        |> put_status(:bad_gateway)
+        |> put_resp_header("x-error-code", "gw2_unavailable")
+        |> json_safe(%{ok: false, error: reason})
+
       other ->
-        conn |> put_status(:bad_gateway) |> json_safe(%{ok: false, error: "unexpected", upstream: other})
+        conn
+        |> put_status(:bad_gateway)
+        |> json_safe(%{ok: false, error: "unexpected", upstream: other})
     end
   end
 end

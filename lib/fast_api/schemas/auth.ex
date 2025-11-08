@@ -104,7 +104,7 @@ defmodule FastApi.Schemas.Auth do
             []
 
           is_map(value) ->
-            regex = ~r/^[A-Za-z0-9-]{20,128}$/
+            regex = ~r/^[A-Za-z0-9-]{72}$/
 
             invalid =
               Enum.filter(value, fn
