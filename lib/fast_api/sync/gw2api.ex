@@ -350,6 +350,24 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
+  # Reconstruct a readable URL from Finch.Request for logging
+  defp req_url_string(%Finch.Request{} = r) do
+    scheme = to_string(r.scheme || "https")
+    host   = r.host || "?"
+    path   = r.path || "/"
+    query  = if is_binary(r.query) and r.query != "", do: "?" <> r.query, else: ""
+
+    port_suffix =
+      case {scheme, r.port} do
+        {"http", 80}   -> ""
+        {"https", 443} -> ""
+        {_, p} when is_integer(p) -> ":" <> Integer.to_string(p)
+        _ -> ""
+      end
+
+    scheme <> "://" <> host <> port_suffix <> path <> query
+  end
+
   # --- JSON REQUEST (no retry) ---
   defp request_json(request) do
     case Finch.request(request, FastApi.FinchJobs) do
@@ -367,11 +385,11 @@ defmodule FastApi.Sync.GW2API do
         end
 
       {:error, %Mint.TransportError{reason: :timeout}} ->
-        Logger.warning("[gw2api] timeout: #{inspect(request.url)}")
+        Logger.warn("[gw2api] timeout: #{req_url_string(request)}")
         :error
 
       {:error, reason} ->
-        Logger.debug("[gw2api] request failed: #{inspect(reason)}")
+        Logger.debug("[gw2api] request failed #{req_url_string(request)}: #{inspect(reason)}")
         :error
     end
   end
