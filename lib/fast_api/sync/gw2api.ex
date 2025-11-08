@@ -11,7 +11,7 @@ defmodule FastApi.Sync.GW2API do
   @prices "https://api.guildwars2.com/v2/commerce/prices"
 
   @step 200
-  @concurrency 4
+  @concurrency 8
   @flags_cache_ttl_ms 86_400_000
   @flags_cache_table :gw2_flags
 
@@ -366,7 +366,12 @@ defmodule FastApi.Sync.GW2API do
           _ -> :error
         end
 
-      {:error, _} ->
+      {:error, %Mint.TransportError{reason: :timeout}} ->
+        Logger.warning("[gw2api] timeout: #{inspect(request.url)}")
+        :error
+
+      {:error, reason} ->
+        Logger.debug("[gw2api] request failed: #{inspect(reason)}")
         :error
     end
   end
