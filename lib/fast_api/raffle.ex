@@ -371,7 +371,7 @@ defmodule FastApi.Raffle do
   # ---- Ticket weights ----
   defp ticket_weight("premium"), do: 50
   defp ticket_weight("gold"),    do: 25
-  defp ticket_weight("silver"),  do: 10
+  defp ticket_weight("silver"),  do: 15
   defp ticket_weight("copper"),  do: 5
   defp ticket_weight(_),         do: 1
 
