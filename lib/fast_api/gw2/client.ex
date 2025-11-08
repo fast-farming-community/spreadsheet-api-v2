@@ -10,19 +10,23 @@ defmodule FastApi.GW2.Client do
   @chunk_size_currencies 50
   @max_concurrency 4
   @retry_attempts  1
-  @retry_base_ms   200
   @stream_buffer_ms 5_000
   @stream_timeout (@receive_timeout * @retry_attempts) + @stream_buffer_ms
 
   defp finch_opts(extra) do
     Keyword.merge(
-      [connect_timeout: @connect_timeout, pool_timeout: @pool_timeout, receive_timeout: @receive_timeout],
+      [
+        connect_timeout: @connect_timeout,
+        pool_timeout: @pool_timeout,
+        receive_timeout: @receive_timeout
+      ],
       extra
     )
   end
 
   defp api_disabled?(body) when is_binary(body) do
-    String.contains?(body, "API Temporarily disabled") or String.contains?(body, "Scheduled reactivation")
+    String.contains?(body, "API Temporarily disabled") or
+      String.contains?(body, "Scheduled reactivation")
   end
   defp api_disabled?(_), do: false
 

@@ -15,16 +15,56 @@ defmodule FastApi.Sync.GW2API do
   @flags_cache_ttl_ms 86_400_000
   @flags_cache_table :gw2_flags
 
-  # --- token bucket per endpoint (2 req/sec) ---
+  # --- lightweight ETS rate limiter: 2 req/sec per bucket ---
+  @rl_table :gw2_rl
   @rl_interval_ms 1_000
   @rl_qps 2
 
+  defp ensure_rl_table! do
+    case :ets.info(@rl_table) do
+      :undefined ->
+        try do
+          :ets.new(@rl_table, [:named_table, :set, :public, read_concurrency: true])
+        catch
+          :error, :badarg -> :ok
+        end
+
+      _ -> :ok
+    end
+
+    :ok
+  end
+
+  defp rl_now_ms, do: System.monotonic_time(:millisecond)
+
   defp rl_wait(bucket) do
-    case ExRated.check_rate(bucket, @rl_interval_ms, @rl_qps) do
-      {:ok, _} -> :ok
-      {:error, _} ->
-        Process.sleep(100)
-        rl_wait(bucket)
+    ensure_rl_table!()
+
+    case :ets.lookup(@rl_table, bucket) do
+      [{^bucket, last_ms, tokens}] ->
+        now = rl_now_ms()
+        elapsed = max(now - last_ms, 0)
+
+        # refill tokens by interval slices (integer arithmetic)
+        tokens_refilled =
+          tokens +
+            div(elapsed, @rl_interval_ms) * @rl_qps
+          |> min(@rl_qps)
+
+        if tokens_refilled >= 1 do
+          :ets.insert(@rl_table, {bucket, now, tokens_refilled - 1})
+          :ok
+        else
+          # sleep until next refill boundary (at least 50ms to avoid tight loop)
+          wait = max(@rl_interval_ms - rem(elapsed, @rl_interval_ms), 50)
+          Process.sleep(wait)
+          rl_wait(bucket)
+        end
+
+      _ ->
+        # first time we see this bucket
+        :ets.insert(@rl_table, {bucket, rl_now_ms(), @rl_qps - 1})
+        :ok
     end
   end
 
@@ -89,7 +129,6 @@ defmodule FastApi.Sync.GW2API do
 
       # Quiet skip on upstream failure to avoid destructive delete
       if item_ids == [] or commerce_item_ids == [] do
-        # no logs per your “silent on failure” rule
         :ok
       else
         tradable_set = MapSet.new(commerce_item_ids)
