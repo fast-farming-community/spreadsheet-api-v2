@@ -450,8 +450,17 @@ defmodule FastApi.Sync.GW2API do
     if misses != [] do
       rl_wait("gw2:items")
       result = get_details_chunk(misses, @items)
-      Enum.each(result, fn %{"id" => id, "flags" => flags} ->
-        flags_insert(id, flags || [], now)
+      result
+      |> Enum.each(fn item ->
+        case item do
+          %{"id" => id} ->
+            flags = Map.get(item, "flags", []) || []
+            flags_insert(id, flags, now)
+
+          # e.g. %{"text" => "unknown error"} or any other non-item payload
+          _ ->
+            :ok
+        end
       end)
     end
 
