@@ -385,7 +385,7 @@ defmodule FastApi.Sync.GW2API do
         end
 
       {:error, %Mint.TransportError{reason: :timeout}} ->
-        Logger.warn("[gw2api] timeout: #{req_url_string(request)}")
+        Logger.warning("[gw2api] timeout: #{req_url_string(request)}")
         :error
 
       {:error, reason} ->
