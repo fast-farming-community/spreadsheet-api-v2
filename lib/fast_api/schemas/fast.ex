@@ -89,9 +89,8 @@ defmodule FastApi.Schemas.Fast do
       field(:key, :string)
       field(:name, :string)
       field(:range, :string)
-      field(:rows, :string)          # legacy
+      field(:rows, :string)
 
-      # 🔹 NEW tiered payloads
       field(:rows_copper, :string)
       field(:rows_silver, :string)
       field(:rows_gold,   :string)
@@ -218,7 +217,7 @@ defmodule FastApi.Schemas.Fast do
       belongs_to(:page, FastApi.Schemas.Fast.Page)
       field :published, :boolean
       field :range, :string
-      field :rows, :string          # legacy
+      field :rows, :string
 
       field :rows_copper, :string
       field :rows_silver, :string

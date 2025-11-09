@@ -46,7 +46,8 @@ if config_env() == :prod do
     jobs: [
       {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
       # {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
-      {"*/5 * * * *", {FastApi.Sync.Features, :execute_cycle, []}},
+      {"*/5 * * * *", {FastApi.Sync.GoogleSheetsUpdater, :execute_cycle, []}},
+      {"@hourly", {FastApi.Sync.GoogleSheetsDetailed, :execute, []}},
       {"@hourly", {FastApi.Auth, :delete_unverified, []}},
       {"@hourly", {FastApi.Auth, :purge_expired_password_resets, []}},
       {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
