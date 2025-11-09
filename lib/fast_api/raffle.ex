@@ -53,8 +53,8 @@ defmodule FastApi.Raffle do
               %{
                 month_key: key,
                 status: "open",
-                items: %{"items" => []},      # store as MAP
-                winners: %{"winners" => []},  # store as MAP
+                items: %{"items" => []},
+                winners: %{"winners" => []},
                 inserted_at: now,
                 updated_at: now
               }
@@ -291,7 +291,7 @@ defmodule FastApi.Raffle do
   end
 
   # ---------------------------
-  # PUBLIC STATS FOR CURRENT MONTH
+  # PUBLIC STATS / TOTALS
   # ---------------------------
 
   @doc """
@@ -319,6 +319,27 @@ defmodule FastApi.Raffle do
       end)
 
     %{entrants: entrants, tickets: tickets}
+  end
+
+  @doc """
+  Sum buy/sell totals for a list of item maps having quantity, tp_buy, tp_sell.
+  """
+  def totals_for_items(items) when is_list(items) do
+    Enum.reduce(items, %{buy: 0, sell: 0}, fn it, acc ->
+      qty  = (it["quantity"] || 1) |> max(1)
+      buy  = it["tp_buy"] || 0
+      sell = it["tp_sell"] || 0
+      %{buy: acc.buy + qty * buy, sell: acc.sell + qty * sell}
+    end)
+  end
+
+  @doc """
+  Buy/sell totals for the current row.
+  """
+  def current_totals() do
+    r = current_row()
+    items = normalize_items(r.items)
+    totals_for_items(items)
   end
 
   # ---------------------------
@@ -406,9 +427,25 @@ defmodule FastApi.Raffle do
         %{"item_id" => item, "user_ign" => ign}
       end)
 
+    # Frozen summary snapshot
+    entrants = pool |> Enum.map(&elem(&1, 0)) |> MapSet.new() |> MapSet.size()
+    tickets  = Enum.reduce(pool, 0, fn {_ign, w}, acc -> acc + max(w, 1) end)
+    %{buy: buy_total, sell: sell_total} = totals_for_items(items)
+
+    frozen_winners =
+      %{
+        "winners" => winners,
+        "summary" => %{
+          "entrants" => entrants,
+          "tickets" => tickets,
+          "tp_buy_total" => buy_total,
+          "tp_sell_total" => sell_total
+        }
+      }
+
     _ =
       r
-      |> Ecto.Changeset.change(%{winners: wrap_winners(winners), status: "drawn", updated_at: now_ts()})
+      |> Ecto.Changeset.change(%{winners: frozen_winners, status: "drawn", updated_at: now_ts()})
       |> Repo.update()
 
     {:ok, length(winners)}

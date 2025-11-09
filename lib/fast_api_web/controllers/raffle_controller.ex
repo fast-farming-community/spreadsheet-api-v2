@@ -34,6 +34,7 @@ defmodule FastApiWeb.RaffleController do
       end
 
     stats = Raffle.current_stats()
+    totals = Raffle.current_totals()
 
     json(conn, %{
       month: r.month_key,
@@ -41,7 +42,9 @@ defmodule FastApiWeb.RaffleController do
       items: items,
       winners: winners,
       entries_count: stats.entrants,
-      tickets_pool: stats.tickets
+      tickets_pool: stats.tickets,
+      tp_buy_total: totals.buy,
+      tp_sell_total: totals.sell
     })
   end
 
@@ -59,21 +62,43 @@ defmodule FastApiWeb.RaffleController do
 
     payload =
       Enum.map(rows, fn r ->
+        items_map =
+          case r.items do
+            %{"items" => _} = m -> m
+            list when is_list(list) -> %{"items" => list}
+            _ -> %{"items" => []}
+          end
+
+        winners_map =
+          case r.winners do
+            %{"winners" => _} = m -> m
+            list when is_list(list) -> %{"winners" => list}
+            _ -> %{"winners" => []}
+          end
+
+        items_list =
+          case items_map["items"] do
+            l when is_list(l) -> l
+            _ -> []
+          end
+
+        %{buy: buy_total_fallback, sell: sell_total_fallback} = Raffle.totals_for_items(items_list)
+
+        summary = Map.get(winners_map, "summary", %{})
+        entrants_frozen = summary["entrants"]
+        tickets_frozen  = summary["tickets"]
+        tp_buy_total    = summary["tp_buy_total"] || buy_total_fallback
+        tp_sell_total   = summary["tp_sell_total"] || sell_total_fallback
+
         %{
           month: r.month_key,
           status: r.status,
-          items:
-            case r.items do
-              %{"items" => _} = m -> m
-              list when is_list(list) -> %{"items" => list}
-              _ -> %{"items" => []}
-            end,
-          winners:
-            case r.winners do
-              %{"winners" => _} = m -> m
-              list when is_list(list) -> %{"winners" => list}
-              _ -> %{"winners" => []}
-            end
+          items: items_map,
+          winners: winners_map,
+          entries_count: entrants_frozen,
+          tickets_pool: tickets_frozen,
+          tp_buy_total: tp_buy_total,
+          tp_sell_total: tp_sell_total
         }
       end)
 
@@ -97,7 +122,7 @@ defmodule FastApiWeb.RaffleController do
       case user.role_id do
         "premium" -> 50
         "gold"    -> 25
-        "silver"  -> 10
+        "silver"  -> 15
         "copper"  -> 5
         _         -> 1
       end
