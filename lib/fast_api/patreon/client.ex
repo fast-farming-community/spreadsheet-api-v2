@@ -44,12 +44,12 @@ defmodule FastApi.Patreon.Client do
   defp get_patrons(link) when is_binary(link) do
     headers =
       [{"Authorization", "Bearer #{Application.fetch_env!(:fast_api, :patreon_api_key)}"},
-       {"User-Agent", "fast-api/1.0"} | @default_headers]
+      {"User-Agent", "fast-api/1.0"} | @default_headers]
 
     req = Finch.build(:get, link, headers)
 
     case Finch.request(req, FastApi.FinchJobs) do
-      {:ok, %Finch.Response{status: status, headers: resp_headers, body: body}}
+      {:ok, %Finch.Response{status: status, headers: _resp_headers, body: body}}
       when status in 200..299 ->
         case safe_decode_json(body) do
           {:ok, json} -> {:ok, json}
@@ -60,7 +60,6 @@ defmodule FastApi.Patreon.Client do
 
       {:ok, %Finch.Response{status: status, headers: resp_headers, body: body}} ->
         ctype = content_type(resp_headers)
-        # Patreon may return HTML on errors; don’t try to decode.
         Logger.warning("Patreon unexpected status #{status} ctype=#{inspect(ctype)} body=#{preview(body)}")
         {:error, {:unexpected_status, status, ctype}}
 
