@@ -13,7 +13,7 @@ defmodule FastApi.Application do
       FastApi.Repo,
 
       # Finch pools
-      {Finch, name: FastApi.FinchPublic, pools: %{default: [size: 50, count: 2]}},
+      {Finch, name: FastApi.FinchPublic, pools: %{default: [size: 100, count: 4]}},
       {Finch, name: FastApi.FinchJobs,   pools: %{default: [size: 50,  count: 2]}},
       {Finch, name: FastApi.FinchHealth, pools: %{default: [size: 10,  count: 1]}},
 
