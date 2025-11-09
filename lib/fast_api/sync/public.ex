@@ -38,7 +38,7 @@ defmodule FastApi.Sync.Public do
 
     dt = System.monotonic_time(:millisecond) - t0
     ok_count = [changelog_dt, updates_dt, todos_dt] |> Enum.count(&(&1 != ""))
-    Logger.info("[job] public.execute completed in #{fmt_ms(dt)} files=3 resolved=#{ok_count}")
+    Logger.info("[Public] public.execute completed in #{fmt_ms(dt)} files=3 resolved=#{ok_count}")
     result
   end
 
@@ -57,12 +57,12 @@ defmodule FastApi.Sync.Public do
           date
         else
           other ->
-            Logger.error("GitHub parse error for #{filename} (status #{status}): #{inspect(other)}")
+            Logger.error("[Public] GitHub parse error for #{filename} (status #{status}): #{inspect(other)}")
             ""
         end
 
       {:error, error} ->
-        Logger.error("Error requesting #{filename} from GitHub: #{inspect(error)}")
+        Logger.error("[Public] Error requesting #{filename} from GitHub: #{inspect(error)}")
         ""
     end
   end

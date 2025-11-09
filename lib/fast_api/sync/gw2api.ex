@@ -155,11 +155,11 @@ defmodule FastApi.Sync.GW2API do
 
         if MapSet.size(removed_ids) > 0 do
           Repo.delete_all(from(i in Fast.Item, where: i.id in ^MapSet.to_list(removed_ids)))
-          Logger.info("Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
+          Logger.info("[GW2Api] Removed #{MapSet.size(removed_ids)} obsolete GW2 items")
         end
 
         batch_upsert(all_rows)
-        Logger.info("Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
+        Logger.info("[GW2Api] Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
         :ok
       end
     catch
@@ -304,7 +304,7 @@ defmodule FastApi.Sync.GW2API do
       case sheets_values_update_with_retry(connection, sheet_id, range, values) do
         {:ok, _response} ->
           dt = mono_ms() - t0
-          Logger.info("[job] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
+          Logger.info("[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
           :ok
         {:error, %Tesla.Env{status: 503}} -> :ok
         {:error, %Tesla.Env{}} -> :ok
@@ -385,11 +385,11 @@ defmodule FastApi.Sync.GW2API do
         end
 
       {:error, %Mint.TransportError{reason: :timeout}} ->
-        Logger.warning("[gw2api] timeout")
+        Logger.warning("[GW2Api] timeout")
         :error
 
       {:error, reason} ->
-        Logger.debug("[gw2api] request failed #{req_url_string(request)}: #{inspect(reason)}")
+        Logger.debug("[GW2Api] request failed #{req_url_string(request)}: #{inspect(reason)}")
         :error
     end
   end

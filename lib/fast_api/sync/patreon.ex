@@ -51,12 +51,12 @@ defmodule FastApi.Sync.Patreon do
           end)
 
         dt = System.monotonic_time(:millisecond) - t0
-        Logger.info("[job] patreon.sync_memberships completed in #{fmt_ms(dt)} refreshed=#{refreshed} total_members=#{length(members)}")
+        Logger.info("[Patreon] patreon.sync_memberships completed in #{fmt_ms(dt)} refreshed=#{refreshed} total_members=#{length(members)}")
         :ok
 
       {:error, err} ->
         dt = System.monotonic_time(:millisecond) - t0
-        Logger.error("[job] patreon.sync_memberships failed in #{fmt_ms(dt)} error=#{inspect(err)}")
+        Logger.error("[Patreon] patreon.sync_memberships failed in #{fmt_ms(dt)} error=#{inspect(err)}")
         :error
     end
   end
@@ -82,7 +82,6 @@ defmodule FastApi.Sync.Patreon do
               role = Map.get(member_map, email, "free")
               _ = Auth.set_role(user, role)
 
-              # auto-sign if paying
               if role != "free" do
                 from(u in User, where: u.id == ^user.id and u.raffle_signed == false)
                 |> Repo.update_all(set: [raffle_signed: true, updated_at: now_ts()])
@@ -95,12 +94,12 @@ defmodule FastApi.Sync.Patreon do
           end)
 
         dt = System.monotonic_time(:millisecond) - t0
-        Logger.info("[job] patreon.clear_memberships completed in #{fmt_ms(dt)} pruned=#{pruned} updated=#{updated} admins_skipped=#{skipped_admin} users_total=#{length(users)}")
+        Logger.info("[Patreon] patreon.clear_memberships completed in #{fmt_ms(dt)} pruned=#{pruned} updated=#{updated} admins_skipped=#{skipped_admin} users_total=#{length(users)}")
         :ok
 
       {:error, err} ->
         dt = System.monotonic_time(:millisecond) - t0
-        Logger.error("[job] patreon.clear_memberships failed in #{fmt_ms(dt)} error=#{inspect(err)} users_total=#{length(users)}")
+        Logger.error("[Patreon] patreon.clear_memberships failed in #{fmt_ms(dt)} error=#{inspect(err)} users_total=#{length(users)}")
         :error
     end
   end
