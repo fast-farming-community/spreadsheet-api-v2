@@ -157,9 +157,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
         if all_upper?(first) do
           :ignore
         else
-          to_kebab = fn toks ->
-            toks |> Enum.map(&String.downcase/1) |> Enum.join("-")
-          end
+          to_kebab = fn toks -> toks |> Enum.map(&String.downcase/1) |> Enum.join("-") end
 
           prefixes =
             tokens
@@ -178,7 +176,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
             if key_tokens == [] do
               :ignore
             else
-              key = key_tokens |> Enum.map(&String.downcase/1) |> Enum.join("-")
+              key = build_key_from_tokens(key_tokens)
               {:ok, %{category: category, key: key}}
             end
           else
@@ -189,7 +187,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
               :ignore
             else
               category = String.downcase(cat_token)
-              key = key_tokens |> Enum.map(&String.downcase/1) |> Enum.join("-")
+              key = build_key_from_tokens(key_tokens)
               {:ok, %{category: category, key: key}}
             end
           end
@@ -197,7 +195,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     end
   end
 
-  # split digits into their own tokens
+  # Tokenizer:
   defp camel_tokens(s) do
     Regex.scan(~r/[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+/, s)
     |> Enum.map(&hd/1)
@@ -205,6 +203,41 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
 
   defp all_upper?(s) do
     s != "" and s == String.upcase(s) and String.match?(s, ~r/^[A-Z0-9_]+$/)
+  end
+
+  # ---------- Key building helpers ----------
+
+  defp build_key_from_tokens(key_tokens) do
+    key_tokens
+    |> Enum.map(&String.downcase/1)
+    |> collapse_short_alpha_digit_s()
+    |> Enum.flat_map(&split_compound_numeric_suffix/1)
+    |> Enum.join("-")
+  end
+
+  # Collapse patterns like ["t","4","s"] -> ["t4s"], ["cm","50"] -> ["cm50"]
+  # but DO NOT collapse long words like ["level","46"].
+  defp collapse_short_alpha_digit_s(tokens), do: collapse_short_alpha_digit_s(tokens, [])
+
+  defp collapse_short_alpha_digit_s([a, num, "s" | rest], acc)
+       when byte_size(a) <= 2 and num =~ ~r/^\d+$/ do
+    collapse_short_alpha_digit_s(rest, [a <> num <> "s" | acc])
+  end
+
+  defp collapse_short_alpha_digit_s([a, num | rest], acc)
+       when byte_size(a) <= 2 and num =~ ~r/^\d+$/ do
+    collapse_short_alpha_digit_s(rest, [a <> num | acc])
+  end
+
+  defp collapse_short_alpha_digit_s([h | t], acc), do: collapse_short_alpha_digit_s(t, [h | acc])
+  defp collapse_short_alpha_digit_s([], acc), do: Enum.reverse(acc)
+
+  # If a token looks like "t4s1", split to ["t4s","1"]
+  defp split_compound_numeric_suffix(token) do
+    case Regex.run(~r/^([a-z]+\d+[a-z])(\d+)$/, token) do
+      [_, prefix, digits] -> [prefix, digits]
+      _ -> [token]
+    end
   end
 
   # ---------- STEP 3: Build main-table index & validate rows (I5/I6) ----------
