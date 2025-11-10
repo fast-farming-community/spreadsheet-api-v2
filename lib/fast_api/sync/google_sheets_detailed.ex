@@ -219,20 +219,29 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
   # but DO NOT collapse long words like ["level","46"].
   defp collapse_short_alpha_digit_s(tokens), do: collapse_short_alpha_digit_s(tokens, [])
 
-  defp collapse_short_alpha_digit_s([a, num, "s" | rest], acc)
-       when byte_size(a) <= 2 and num =~ ~r/^\d+$/ do
-    collapse_short_alpha_digit_s(rest, [a <> num <> "s" | acc])
+  defp collapse_short_alpha_digit_s([a, num, "s" | rest], acc) do
+    if byte_size(a) <= 2 and is_digits?(num) do
+      collapse_short_alpha_digit_s(rest, [a <> num <> "s" | acc])
+    else
+      # keep `a`, continue with the rest
+      collapse_short_alpha_digit_s([num, "s" | rest], [a | acc])
+    end
   end
 
-  defp collapse_short_alpha_digit_s([a, num | rest], acc)
-       when byte_size(a) <= 2 and num =~ ~r/^\d+$/ do
-    collapse_short_alpha_digit_s(rest, [a <> num | acc])
+  defp collapse_short_alpha_digit_s([a, num | rest], acc) do
+    if byte_size(a) <= 2 and is_digits?(num) do
+      collapse_short_alpha_digit_s(rest, [a <> num | acc])
+    else
+      collapse_short_alpha_digit_s([num | rest], [a | acc])
+    end
   end
 
   defp collapse_short_alpha_digit_s([h | t], acc), do: collapse_short_alpha_digit_s(t, [h | acc])
   defp collapse_short_alpha_digit_s([], acc), do: Enum.reverse(acc)
 
-  # If a token looks like "t4s1", split to ["t4s","1"]
+  defp is_digits?(s), do: Regex.match?(~r/^\d+$/, s)
+
+  # If a token looks like "t4s11", split to ["t4s","11"]
   defp split_compound_numeric_suffix(token) do
     case Regex.run(~r/^([a-z]+\d+[a-z])(\d+)$/, token) do
       [_, prefix, digits] -> [prefix, digits]
@@ -254,31 +263,31 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
           _ -> []
         end
 
-      Enum.reduce(rows_list, acc, fn row, inner ->
-        cat0 = to_string(Map.get(row, "Category", "") || "")
-        key0 = to_string(Map.get(row, "Key", "") || "")
+        Enum.reduce(rows_list, acc, fn row, inner ->
+          cat0 = to_string(Map.get(row, "Category", "") || "")
+          key0 = to_string(Map.get(row, "Key", "") || "")
 
-        category = String.downcase(String.trim(cat0))
-        key = String.downcase(String.trim(key0))
+          category = String.downcase(String.trim(cat0))
+          key = String.downcase(String.trim(key0))
 
-        cond do
-          category == "" and key != "" ->
-            Logger.error("[GoogleSheetsDetailed] I5 Key present but Category empty in main-table row (table_id=#{tid}, key=#{key})")
-            inner
+          cond do
+            category == "" and key != "" ->
+              Logger.error("[GoogleSheetsDetailed] I5 Key present but Category empty in main-table row (table_id=#{tid}, key=#{key})")
+              inner
 
-          category != "" and not all_upper?(String.trim(cat0)) and key == "" ->
-            Logger.error("[GoogleSheetsDetailed] I6 Category present but Key empty in main-table row (table_id=#{tid}, category=#{category})")
-            inner
+            category != "" and not all_upper?(String.trim(cat0)) and key == "" ->
+              Logger.error("[GoogleSheetsDetailed] I6 Category present but Key empty in main-table row (table_id=#{tid}, category=#{category})")
+              inner
 
-          category == "" and key == "" ->
-            inner
+            category == "" and key == "" ->
+              inner
 
-          true ->
-            name = to_string(Map.get(row, "Name", "") || "")
-            k = {category, key}
-            if Map.has_key?(inner, k), do: inner, else: Map.put(inner, k, %{name: name, table_id: tid})
-        end
-      end)
+            true ->
+              name = to_string(Map.get(row, "Name", "") || "")
+              k = {category, key}
+              if Map.has_key?(inner, k), do: inner, else: Map.put(inner, k, %{name: name, table_id: tid})
+          end
+        end)
     end)
   end
 
@@ -305,7 +314,6 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     |> Enum.flat_map(fn chunk ->
       case fetch_values_batch(conn, chunk, 1) do
         {:ok, %GoogleApi.Sheets.V4.Model.BatchGetValuesResponse{valueRanges: vrs}} when is_list(vrs) ->
-          # Zip the requested names with the returned valueRanges; if that entry has values, mark the requested name as valid.
           Enum.zip(chunk, vrs)
           |> Enum.flat_map(fn {requested_name, %GoogleApi.Sheets.V4.Model.ValueRange{values: values}} ->
             if is_list(values) and values != [] do
