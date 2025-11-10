@@ -41,8 +41,11 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
       # Build quick lookup set for DB→Sheets reconciliation
       named_set = MapSet.new(Enum.map(named_ranges, & &1.name))
 
-      # 2) Parse and filter candidate (category,key,range_name)
-      {candidates, dup_errors} = parse_candidates(named_ranges)
+      # 1b) Load existing detail_feature names (lowercased) for multi-word category prefix matching
+      df_names = load_detail_feature_names()
+
+      # 2) Parse and filter candidate (category,key,range_name) using longest prefix match
+      {candidates, dup_errors} = parse_candidates(named_ranges, df_names)
 
       # 3) Load main-table rows index and validate human mistakes (I5/I6)
       main_index = build_main_index_and_log_issues()
@@ -100,15 +103,23 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     end
   end
 
-  # ---------- STEP 2: Parse candidates from named ranges ----------
+  # ---------- STEP 1b: Load detail_feature names ----------
+
+  defp load_detail_feature_names() do
+    from(df in Fast.DetailFeature, select: fragment("LOWER(?)", df.name))
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  # ---------- STEP 2: Parse candidates from named ranges (with prefix matching) ----------
 
   @doc false
-  defp parse_candidates(named_ranges) do
+  defp parse_candidates(named_ranges, df_names) do
     {kept, dup_errors} =
       Enum.reduce(named_ranges, {%{}, 0}, fn nr, {acc, dupcnt} ->
         name = nr.name || ""
 
-        case parse_range_name(name) do
+        case parse_range_name(name, df_names) do
           :ignore ->
             {acc, dupcnt}
 
@@ -131,36 +142,53 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     {Map.values(kept), dup_errors}
   end
 
-  # Rules:
-  #  - Name form: CategoryWord + KeyCamel
-  #  - Ignore ALL UPPERCASE CategoryWord (INTERNAL/...)
-  #  - Return {:ok, %{category, key}} with lowercase `category` and kebab-case `key`.
-  defp parse_range_name(name) when is_binary(name) do
+  # Try to find the longest CamelCase prefix that equals some detail_features.name.
+  # otherwise first token = category, rest = key.
+  defp parse_range_name(name, df_names) when is_binary(name) do
     tokens = camel_tokens(name)
 
     case tokens do
       [] ->
         :ignore
 
-      [cat_token | key_tokens] ->
+      [first | _] when all_upper?(first) ->
+        :ignore
+
+      _ ->
+        to_kebab = fn toks ->
+          toks |> Enum.map(&String.downcase/1) |> Enum.join("-")
+        end
+
+        prefixes =
+          tokens
+          |> Enum.with_index(1)
+          |> Enum.map(fn {_tok, i} -> Enum.take(tokens, i) end)
+
+        matched_prefix =
+          prefixes
+          |> Enum.reverse()
+          |> Enum.find(fn pref -> MapSet.member?(df_names, to_kebab.(pref)) end)
+
         cond do
-          key_tokens == [] ->
-            :ignore
+          matched_prefix ->
+            category = to_kebab.(matched_prefix)
+            key_tokens = Enum.drop(tokens, length(matched_prefix))
 
-          all_upper?(cat_token) ->
-            :ignore
-
-          true ->
-            category = String.downcase(cat_token)
-
-            key =
-              key_tokens
-              |> Enum.map(&String.downcase/1)
-              |> Enum.join("-")
-
-            if key == "" do
+            if key_tokens == [] do
               :ignore
             else
+              key = key_tokens |> Enum.map(&String.downcase/1) |> Enum.join("-")
+              {:ok, %{category: category, key: key}}
+            end
+
+          true ->
+            [cat_token | key_tokens] = tokens
+
+            if key_tokens == [] do
+              :ignore
+            else
+              category = String.downcase(cat_token)
+              key = key_tokens |> Enum.map(&String.downcase/1) |> Enum.join("-")
               {:ok, %{category: category, key: key}}
             end
         end
@@ -343,7 +371,12 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
   end
 
   defp compose_range_name(category, key) do
-    cat = titleize_token(category)
+    # Handle multi-token categories like "bag-opener" -> "BagOpener"
+    cat =
+      category
+      |> String.split(~r/[-_\s]+/, trim: true)
+      |> Enum.map(&titleize_token/1)
+      |> Enum.join("")
 
     key_title =
       key
