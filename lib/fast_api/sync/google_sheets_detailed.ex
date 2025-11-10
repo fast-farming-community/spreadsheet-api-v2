@@ -147,30 +147,31 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
   defp parse_range_name(name, df_names) when is_binary(name) do
     tokens = camel_tokens(name)
 
-    case tokens do
-      [] ->
+    cond do
+      tokens == [] ->
         :ignore
 
-      [first | _] when all_upper?(first) ->
-        :ignore
+      true ->
+        [first | _] = tokens
 
-      _ ->
-        to_kebab = fn toks ->
-          toks |> Enum.map(&String.downcase/1) |> Enum.join("-")
-        end
+        if all_upper?(first) do
+          :ignore
+        else
+          to_kebab = fn toks ->
+            toks |> Enum.map(&String.downcase/1) |> Enum.join("-")
+          end
 
-        prefixes =
-          tokens
-          |> Enum.with_index(1)
-          |> Enum.map(fn {_tok, i} -> Enum.take(tokens, i) end)
+          prefixes =
+            tokens
+            |> Enum.with_index(1)
+            |> Enum.map(fn {_tok, i} -> Enum.take(tokens, i) end)
 
-        matched_prefix =
-          prefixes
-          |> Enum.reverse()
-          |> Enum.find(fn pref -> MapSet.member?(df_names, to_kebab.(pref)) end)
+          matched_prefix =
+            prefixes
+            |> Enum.reverse()
+            |> Enum.find(fn pref -> MapSet.member?(df_names, to_kebab.(pref)) end)
 
-        cond do
-          matched_prefix ->
+          if matched_prefix do
             category = to_kebab.(matched_prefix)
             key_tokens = Enum.drop(tokens, length(matched_prefix))
 
@@ -180,8 +181,8 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
               key = key_tokens |> Enum.map(&String.downcase/1) |> Enum.join("-")
               {:ok, %{category: category, key: key}}
             end
-
-          true ->
+          else
+            # Fallback to old behavior
             [cat_token | key_tokens] = tokens
 
             if key_tokens == [] do
@@ -191,6 +192,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
               key = key_tokens |> Enum.map(&String.downcase/1) |> Enum.join("-")
               {:ok, %{category: category, key: key}}
             end
+          end
         end
     end
   end
