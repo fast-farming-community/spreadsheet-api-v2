@@ -220,31 +220,31 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
           _ -> []
         end
 
-      Enum.reduce(rows_list, acc, fn row, inner ->
-        cat0 = to_string(Map.get(row, "Category", "") || "")
-        key0 = to_string(Map.get(row, "Key", "") || "")
+        Enum.reduce(rows_list, acc, fn row, inner ->
+          cat0 = to_string(Map.get(row, "Category", "") || "")
+          key0 = to_string(Map.get(row, "Key", "") || "")
 
-        category = String.downcase(String.trim(cat0))
-        key = String.downcase(String.trim(key0))
+          category = String.downcase(String.trim(cat0))
+          key = String.downcase(String.trim(key0))
 
-        cond do
-          category == "" and key != "" ->
-            Logger.error("[GoogleSheetsDetailed] I5 Key present but Category empty in main-table row (table_id=#{tid}, key=#{key})")
-            inner
+          cond do
+            category == "" and key != "" ->
+              Logger.error("[GoogleSheetsDetailed] I5 Key present but Category empty in main-table row (table_id=#{tid}, key=#{key})")
+              inner
 
-          category != "" and not all_upper?(String.trim(cat0)) and key == "" ->
-            Logger.error("[GoogleSheetsDetailed] I6 Category present but Key empty in main-table row (table_id=#{tid}, category=#{category})")
-            inner
+            category != "" and not all_upper?(String.trim(cat0)) and key == "" ->
+              Logger.error("[GoogleSheetsDetailed] I6 Category present but Key empty in main-table row (table_id=#{tid}, category=#{category})")
+              inner
 
-          category == "" and key == "" ->
-            inner
+            category == "" and key == "" ->
+              inner
 
-          true ->
-            name = to_string(Map.get(row, "Name", "") || "")
-            k = {category, key}
-            if Map.has_key?(inner, k), do: inner, else: Map.put(inner, k, %{name: name, table_id: tid})
-        end
-      end)
+            true ->
+              name = to_string(Map.get(row, "Name", "") || "")
+              k = {category, key}
+              if Map.has_key?(inner, k), do: inner, else: Map.put(inner, k, %{name: name, table_id: tid})
+          end
+        end)
     end)
   end
 
@@ -329,9 +329,17 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
           Logger.error("[GoogleSheetsDetailed] I1 Unknown category: detail_features.name missing for category=#{cat}")
           {ins, exist, e3, i1 + 1, miss}
 
-        {_, nil} ->
-          Logger.error("[GoogleSheetsDetailed] E3 Sheets orphan: (category=#{cat}, key=#{key}) from range=#{range_name} has no main-table row")
-          {ins, exist, e3 + 1, i1, miss}
+        {df_id, nil} ->
+          # NEW: allow absence in main-table if a detail_tables row already exists for this (category,key)
+          case Repo.get_by(Fast.DetailTable, detail_feature_id: df_id, key: key) do
+            %Fast.DetailTable{} ->
+              # Treat as existing entry, no error
+              {ins, exist + 1, e3, i1, miss}
+
+            nil ->
+              Logger.error("[GoogleSheetsDetailed] E3 Sheets orphan: (category=#{cat}, key=#{key}) from range=#{range_name} has no main-table row and no existing detail_tables row")
+              {ins, exist, e3 + 1, i1, miss}
+          end
 
         {df_id, %{name: name}} ->
           if MapSet.member?(valid_set, range_name) do
@@ -428,5 +436,16 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     mins = div(total, 60)
     secs = rem(total, 60)
     "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
+  end
+
+  # helpers
+
+  defp camel_tokens(s) do
+    Regex.scan(~r/[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])/, s)
+    |> Enum.map(&hd/1)
+  end
+
+  defp all_upper?(s) do
+    s != "" and s == String.upcase(s) and String.match?(s, ~r/^[A-Z0-9_]+$/)
   end
 end
