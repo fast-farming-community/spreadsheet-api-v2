@@ -197,8 +197,9 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     end
   end
 
+  # split digits into their own tokens
   defp camel_tokens(s) do
-    Regex.scan(~r/[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])/, s)
+    Regex.scan(~r/[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+/, s)
     |> Enum.map(&hd/1)
   end
 
@@ -380,7 +381,6 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
   end
 
   defp compose_range_name(category, key) do
-    # Handle multi-token categories like "bag-opener" -> "BagOpener"
     cat =
       category
       |> String.split(~r/[-_\s]+/, trim: true)
