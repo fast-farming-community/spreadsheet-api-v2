@@ -241,16 +241,14 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     |> Enum.flat_map(fn chunk ->
       case fetch_values_batch(conn, chunk, 1) do
         {:ok, %GoogleApi.Sheets.V4.Model.BatchGetValuesResponse{valueRanges: vrs}} when is_list(vrs) ->
-          Enum.flat_map(vrs, fn
-            %GoogleApi.Sheets.V4.Model.ValueRange{range: name, values: values} ->
-              if is_list(values) and values != [] do
-                [normalize_range_name(name)]
-              else
-                []
-              end
-
-            _ ->
+          # Zip the requested names with the returned valueRanges; if that entry has values, mark the requested name as valid.
+          Enum.zip(chunk, vrs)
+          |> Enum.flat_map(fn {requested_name, %GoogleApi.Sheets.V4.Model.ValueRange{values: values}} ->
+            if is_list(values) and values != [] do
+              [requested_name]
+            else
               []
+            end
           end)
 
         _ ->
@@ -289,13 +287,6 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
   end
 
   defp fetch_values_batch(_conn, _ranges, _attempt), do: {:error, :backoff_exhausted}
-
-  defp normalize_range_name(range) when is_binary(range) do
-    case String.split(range, "!", parts: 2) do
-      [single] -> single
-      [maybe_name, _] -> maybe_name
-    end
-  end
 
   # ---------- STEP 6: Try inserts ----------
 
