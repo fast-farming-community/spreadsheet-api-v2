@@ -16,6 +16,10 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     - All-uppercase categories (INTERNAL...) are ignored.
     - Both Category and Key empty in a row are ignored.
     - I4: Duplicates across main-table rows are intentional; first-found is used, no warning.
+
+  Notes:
+    - Key parsing now also supports compact numeric ranges:
+      "…120" -> "...-1-20", "…2140" -> "...-21-40" (split last two digits).
   """
 
   alias FastApi.Repo
@@ -195,7 +199,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     end
   end
 
-  # Tokenizer:
+  # Tokenizer: split CamelCase + all-caps blocks + digit blocks
   defp camel_tokens(s) do
     Regex.scan(~r/[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+/, s)
     |> Enum.map(&hd/1)
@@ -212,6 +216,8 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     |> Enum.map(&String.downcase/1)
     |> collapse_short_alpha_digit_s()
     |> Enum.flat_map(&split_compound_numeric_suffix/1)
+    # expand concatenated numeric ranges (e.g., "120" -> ["1","20"], "2140" -> ["21","40"])
+    |> Enum.flat_map(&expand_concatenated_number/1)
     |> Enum.join("-")
   end
 
@@ -223,7 +229,6 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     if byte_size(a) <= 2 and is_digits?(num) do
       collapse_short_alpha_digit_s(rest, [a <> num <> "s" | acc])
     else
-      # keep `a`, continue with the rest
       collapse_short_alpha_digit_s([num, "s" | rest], [a | acc])
     end
   end
@@ -249,6 +254,17 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     end
   end
 
+  # Expand single numeric blocks with 3+ digits into two-number ranges by splitting last 2 digits.
+  # "120" -> ["1","20"], "2140" -> ["21","40"], "305" -> ["3","05"]  (preserve zeros)
+  defp expand_concatenated_number(token) do
+    if Regex.match?(~r/^\d{3,}$/, token) do
+      {head, tail} = String.split_at(token, String.length(token) - 2)
+      [head, tail]
+    else
+      [token]
+    end
+  end
+
   # ---------- STEP 3: Build main-table index & validate rows (I5/I6) ----------
 
   defp build_main_index_and_log_issues() do
@@ -263,31 +279,31 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
           _ -> []
         end
 
-        Enum.reduce(rows_list, acc, fn row, inner ->
-          cat0 = to_string(Map.get(row, "Category", "") || "")
-          key0 = to_string(Map.get(row, "Key", "") || "")
+      Enum.reduce(rows_list, acc, fn row, inner ->
+        cat0 = to_string(Map.get(row, "Category", "") || "")
+        key0 = to_string(Map.get(row, "Key", "") || "")
 
-          category = String.downcase(String.trim(cat0))
-          key = String.downcase(String.trim(key0))
+        category = String.downcase(String.trim(cat0))
+        key = String.downcase(String.trim(key0))
 
-          cond do
-            category == "" and key != "" ->
-              Logger.error("[GoogleSheetsDetailed] I5 Key present but Category empty in main-table row (table_id=#{tid}, key=#{key})")
-              inner
+        cond do
+          category == "" and key != "" ->
+            Logger.error("[GoogleSheetsDetailed] I5 Key present but Category empty in main-table row (table_id=#{tid}, key=#{key})")
+            inner
 
-            category != "" and not all_upper?(String.trim(cat0)) and key == "" ->
-              Logger.error("[GoogleSheetsDetailed] I6 Category present but Key empty in main-table row (table_id=#{tid}, category=#{category})")
-              inner
+          category != "" and not all_upper?(String.trim(cat0)) and key == "" ->
+            Logger.error("[GoogleSheetsDetailed] I6 Category present but Key empty in main-table row (table_id=#{tid}, category=#{category})")
+            inner
 
-            category == "" and key == "" ->
-              inner
+          category == "" and key == "" ->
+            inner
 
-            true ->
-              name = to_string(Map.get(row, "Name", "") || "")
-              k = {category, key}
-              if Map.has_key?(inner, k), do: inner, else: Map.put(inner, k, %{name: name, table_id: tid})
-          end
-        end)
+          true ->
+            name = to_string(Map.get(row, "Name", "") || "")
+            k = {category, key}
+            if Map.has_key?(inner, k), do: inner, else: Map.put(inner, k, %{name: name, table_id: tid})
+        end
+      end)
     end)
   end
 
