@@ -12,7 +12,27 @@ defmodule FastApi.Health.Gw2Server do
         }
 
   def start_link(_), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+
+  # Public API
   def get(key), do: GenServer.call(__MODULE__, {:get, key})
+
+  # Down if any endpoint in the group shows maintenance or 5xx.
+  def down?(group \\ :public) when group in [:public, :auth] do
+    keys =
+      case group do
+        :public -> [:items, :currencies, :commerce_listings, :commerce_prices, :exchange_gems]
+        :auth -> [:account]
+      end
+
+    Enum.any?(keys, fn k ->
+      case get(k) do
+        %{up: false, reason: reason} when is_binary(reason) ->
+          reason == "maintenance" or String.starts_with?(reason, "http_5")
+        _ ->
+          false
+      end
+    end)
+  end
 
   @impl true
   def init(:ok) do
@@ -25,7 +45,8 @@ defmodule FastApi.Health.Gw2Server do
           currencies: "/v2/currencies",
           commerce_listings: "/v2/commerce/listings",
           commerce_prices: "/v2/commerce/prices",
-          exchange_gems: "/v2/commerce/exchange/gems"
+          exchange_gems: "/v2/commerce/exchange/gems",
+          account: "/v2/account"
         }
 
     state = %{
