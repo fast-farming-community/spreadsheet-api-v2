@@ -44,29 +44,29 @@ if config_env() == :prod do
   config :fast_api, FastApi.Scheduler,
   overlap: false,
   jobs: [
-    # ── Auth ───────────────────────────────────────────────────────────────────
+    # Auth
     {"17 * * * *", {FastApi.Auth, :delete_unverified, []}},
     {"23 * * * *", {FastApi.Auth, :purge_expired_password_resets, []}},
 
-    # ── Raffle ─────────────────────────────────────────────────────────────────
+    # Raffle
     {"@daily",     {FastApi.Raffle, :refresh_items_from_character, []}},
     {"0 3 1 * *",  {FastApi.Raffle, :rollover_new_month, []}},
     {"55 23 * * *",{FastApi.Raffle, :draw_current_month, []}},
 
-    # ── Sync.GW2API ────────────────────────────────────────────────────────────
+    # Sync.GW2API
     {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-    # {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}}, # kept commented
+    # {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
 
-    # ── Sync.GoogleSheetsDetailed / Updater ───────────────────────────────────
-    {"@hourly",     {FastApi.Sync.GoogleSheetsDetailed, :execute, []}},
+    # Sync.GoogleSheetsDetailed / Updater
+    # {"@hourly",     {FastApi.Sync.GoogleSheetsDetailed, :execute, []}},
     {"*/5 * * * *", {FastApi.Sync.GoogleSheetsUpdater, :execute_cycle, []}},
 
-    # ── Sync.Patreon ──────────────────────────────────────────────────────────
+    # Sync.Patreon
     {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
     {"31 * * * *",  {FastApi.Sync.Patreon, :clear_memberships, []}},
 
-    # ── Sync.Public ───────────────────────────────────────────────────────────
-    {"37 * * * *",  {FastApi.Sync.Public, :execute, []}}
+    # Sync.Public
+    {"@hourly",  {FastApi.Sync.Public, :execute, []}}
   ]
 
   config :fast_api, FastApi.Health.Gw2Server,
