@@ -19,9 +19,11 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
 
   Notes:
     - Key parsing supports compact numeric ranges:
-      "...120"  -> "...-1-20"
-      "...2140" -> "...-21-40" (split last two digits)
+      "...120"   -> "...-1-20"
+      "...2140"  -> "...-21-40" (split last two digits)
       "...81100" -> "...-81-100" (special-case 5-digit tokens ending with 100)
+    - Special case: for keys containing "...-mf-<number>", keep the number intact.
+      Example: "...-mf-350" stays as "...-mf-350" (not "...-mf-3-50").
   """
 
   alias FastApi.Repo
@@ -221,6 +223,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     |> collapse_short_alpha_digit_s()
     |> Enum.flat_map(&split_compound_numeric_suffix/1)
     |> Enum.flat_map(&expand_concatenated_number/1)
+    |> recombine_mf_numbers()
     |> Enum.join("-")
   end
 
@@ -282,6 +285,26 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
       [token]
     end
   end
+
+  # Special case instead of "...-mf-3-50" stays "...-mf-350".
+  defp recombine_mf_numbers(tokens) do
+    do_recombine_mf(tokens, [])
+  end
+
+  defp do_recombine_mf(["mf" = mf | rest], acc) do
+    {digits, rest2} = Enum.split_while(rest, &is_digits?/1)
+
+    if digits == [] do
+      do_recombine_mf(rest, [mf | acc])
+    else
+      merged = Enum.join(digits, "")
+      # push merged then mf into acc (we reverse at the end)
+      do_recombine_mf(rest2, [merged, mf | acc])
+    end
+  end
+
+  defp do_recombine_mf([h | t], acc), do: do_recombine_mf(t, [h | acc])
+  defp do_recombine_mf([], acc), do: Enum.reverse(acc)
 
   # ---------- STEP 3: Build main-table index & validate rows (I5/I6) ----------
 
