@@ -42,8 +42,6 @@ if config_env() == :prod do
     socket_options: maybe_ipv6
 
   config :fast_api, FastApi.Scheduler,
-    overlap: false,
-    jobs: config :fast_api, FastApi.Scheduler,
   overlap: false,
   jobs: [
     # ── Auth ───────────────────────────────────────────────────────────────────
@@ -68,7 +66,7 @@ if config_env() == :prod do
     {"31 * * * *",  {FastApi.Sync.Patreon, :clear_memberships, []}},
 
     # ── Sync.Public ───────────────────────────────────────────────────────────
-    {"@hourly",  {FastApi.Sync.Public, :execute, []}}
+    {"37 * * * *",  {FastApi.Sync.Public, :execute, []}}
   ]
 
   config :fast_api, FastApi.Health.Gw2Server,
