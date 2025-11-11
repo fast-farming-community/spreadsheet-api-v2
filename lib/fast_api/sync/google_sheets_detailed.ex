@@ -59,13 +59,14 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
       # 4) Resolve detail_feature_ids for all categories we’ll touch (case-insensitive)
       df_index = resolve_detail_feature_ids(MapSet.new(Enum.map(candidates, & &1.category)))
 
-      # 5) Verify the ranges actually return data (batch GET)
-      valid_ranges = verify_ranges_with_values(conn, Enum.map(candidates, & &1.range), @batch_size)
-      valid_set = MapSet.new(valid_ranges)
+      # 5) Verify the ranges actually return data (batch GET) — distinguish EMPTY vs FETCH FAILED
+      statuses = verify_ranges_status(conn, Enum.map(candidates, & &1.range), @batch_size)
+      valid_set = MapSet.new(for {name, :ok} <- statuses, do: name)
+      error_set = MapSet.new(for {name, {:error, _}} <- statuses, do: name)
 
       # 6) Iterate candidates -> insert when all checks pass; else log specific error
-      {inserted, exists, e3_orphans, i1_unknown, missing_values} =
-        insert_new_detail_tables(candidates, main_index, df_index, valid_set)
+      {inserted, exists, e3_orphans, i1_unknown, missing_values, fetch_failed} =
+        insert_new_detail_tables(candidates, main_index, df_index, valid_set, error_set)
 
       # 7) Reconciliation DB→Sheets (R1): detail_tables rows whose range is missing from Sheets
       r1_orphans = db_to_sheets_orphans(named_set)
@@ -75,7 +76,8 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
 
       Logger.info(
         "[GoogleSheetsDetailed] inserted=#{inserted} exists=#{exists} " <>
-          "errors={E3=#{e3_orphans} I1=#{i1_unknown} I3=#{dup_errors} I5/I6=see above MISSING_VALUES=#{missing_values} R1=#{r1_orphans}} " <>
+          "errors={E3=#{e3_orphans} I1=#{i1_unknown} I3=#{dup_errors} I5/I6=see above " <>
+          "MISSING_VALUES=#{missing_values} VALUES_FETCH_FAILED=#{fetch_failed} R1=#{r1_orphans}} " <>
           "in #{fmt_ms(dt)}"
       )
 
@@ -338,25 +340,28 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     Repo.all(q) |> Map.new()
   end
 
-  # ---------- STEP 5: Verify ranges return values ----------
+  # ---------- STEP 5: Verify ranges return values (with per-range status) ----------
 
-  defp verify_ranges_with_values(conn, range_names, batch_size) do
+  # Returns a map %{range_name => :ok | :empty | {:error, reason}}
+  defp verify_ranges_status(conn, range_names, batch_size) do
     range_names
     |> Enum.chunk_every(batch_size)
-    |> Enum.flat_map(fn chunk ->
+    |> Enum.reduce(%{}, fn chunk, acc ->
       case fetch_values_batch(conn, chunk, 1) do
-        {:ok, %GoogleApi.Sheets.V4.Model.BatchGetValuesResponse{valueRanges: vrs}} when is_list(vrs) ->
-          Enum.zip(chunk, vrs)
-          |> Enum.flat_map(fn {requested_name, %GoogleApi.Sheets.V4.Model.ValueRange{values: values}} ->
-            if is_list(values) and values != [] do
-              [requested_name]
-            else
-              []
-            end
-          end)
+        {:ok, %GoogleApi.Sheets.V4.Model.BatchGetValuesResponse{valueRanges: vrs}} ->
+          statuses =
+            Enum.zip(chunk, vrs)
+            |> Enum.map(fn {name, %GoogleApi.Sheets.V4.Model.ValueRange{values: vals}} ->
+              status = if is_list(vals) and vals != [], do: :ok, else: :empty
+              {name, status}
+            end)
+            |> Map.new()
 
-        _ ->
-          []
+          Map.merge(acc, statuses)
+
+        {:error, reason} ->
+          failed = Map.new(chunk, &{&1, {:error, reason}})
+          Map.merge(acc, failed)
       end
     end)
   end
@@ -394,72 +399,78 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
 
   # ---------- STEP 6: Try inserts ----------
 
-  defp insert_new_detail_tables(candidates, main_index, df_index, valid_set) do
-    Enum.reduce(candidates, {0, 0, 0, 0, 0}, fn c, {ins, exist, e3, i1, miss} ->
+  defp insert_new_detail_tables(candidates, main_index, df_index, valid_set, error_set) do
+    Enum.reduce(candidates, {0, 0, 0, 0, 0, 0}, fn c, {ins, exist, e3, i1, miss, fetch_fail} ->
       %{category: cat, key: key, range: range_name} = c
 
       case {Map.get(df_index, cat), Map.get(main_index, {cat, key})} do
         {nil, _} ->
           Logger.error("[GoogleSheetsDetailed] I1 Unknown category: detail_features.name missing for category=#{cat}")
-          {ins, exist, e3, i1 + 1, miss}
+          {ins, exist, e3, i1 + 1, miss, fetch_fail}
 
         {df_id, nil} ->
           # Allow absence in main-table if detail_tables row already exists
           case Repo.get_by(Fast.DetailTable, detail_feature_id: df_id, key: key) do
             %Fast.DetailTable{} ->
-              {ins, exist + 1, e3, i1, miss}
+              {ins, exist + 1, e3, i1, miss, fetch_fail}
 
             nil ->
               Logger.error("[GoogleSheetsDetailed] E3 Sheets orphan: (category=#{cat}, key=#{key}) from range=#{range_name} has no main-table row and no existing detail_tables row")
-              {ins, exist, e3 + 1, i1, miss}
+              {ins, exist, e3 + 1, i1, miss, fetch_fail}
           end
 
         {df_id, %{name: name}} ->
-          if MapSet.member?(valid_set, range_name) do
-            case Repo.get_by(Fast.DetailTable, detail_feature_id: df_id, key: key) do
-              %Fast.DetailTable{} ->
-                {ins, exist + 1, e3, i1, miss}
+          cond do
+            MapSet.member?(error_set, range_name) ->
+              Logger.error("[GoogleSheetsDetailed] VALUES_FETCH_FAILED: could not fetch values for range=#{range_name} (category=#{cat}, key=#{key})")
+              {ins, exist, e3, i1, miss, fetch_fail + 1}
 
-              nil ->
-                params = %{
-                  detail_feature_id: df_id,
-                  key: key,
-                  name: name,
-                  range: compose_range_name(cat, key)
-                }
+            MapSet.member?(valid_set, range_name) ->
+              case Repo.get_by(Fast.DetailTable, detail_feature_id: df_id, key: key) do
+                %Fast.DetailTable{} ->
+                  {ins, exist + 1, e3, i1, miss, fetch_fail}
 
-                changeset =
-                  %Fast.DetailTable{}
-                  |> Ecto.Changeset.cast(params, [:detail_feature_id, :key, :name, :range])
+                nil ->
+                  params = %{
+                    detail_feature_id: df_id,
+                    key: key,
+                    name: name,
+                    range: compose_range_name(cat, key)
+                  }
 
-                insert_result =
-                  try do
-                    Repo.insert(changeset)
-                  rescue
-                    e in Ecto.ConstraintError ->
-                      Logger.error("[GoogleSheetsDetailed] Insert constraint error for (category=#{cat}, key=#{key}): #{Exception.message(e)}")
-                      {:error, :constraint}
-                  end
+                  changeset =
+                    %Fast.DetailTable{}
+                    |> Ecto.Changeset.cast(params, [:detail_feature_id, :key, :name, :range])
 
-                case insert_result do
-                  {:ok, _} ->
-                    {ins + 1, exist, e3, i1, miss}
-
-                  {:error, :constraint} ->
-                    {ins, exist + 1, e3, i1, miss}
-
-                  {:error, changeset} ->
-                    if has_unique_violation?(changeset) do
-                      {ins, exist + 1, e3, i1, miss}
-                    else
-                      Logger.error("[GoogleSheetsDetailed] Insert failed for (category=#{cat}, key=#{key}): #{inspect(changeset.errors)}")
-                      {ins, exist, e3, i1, miss}
+                  insert_result =
+                    try do
+                      Repo.insert(changeset)
+                    rescue
+                      e in Ecto.ConstraintError ->
+                        Logger.error("[GoogleSheetsDetailed] Insert constraint error for (category=#{cat}, key=#{key}): #{Exception.message(e)}")
+                        {:error, :constraint}
                     end
-                end
-            end
-          else
-            Logger.error("[GoogleSheetsDetailed] MISSING_VALUES range has no data: range=#{range_name} (category=#{cat}, key=#{key})")
-            {ins, exist, e3, i1, miss + 1}
+
+                  case insert_result do
+                    {:ok, _} ->
+                      {ins + 1, exist, e3, i1, miss, fetch_fail}
+
+                    {:error, :constraint} ->
+                      {ins, exist + 1, e3, i1, miss, fetch_fail}
+
+                    {:error, changeset} ->
+                      if has_unique_violation?(changeset) do
+                        {ins, exist + 1, e3, i1, miss, fetch_fail}
+                      else
+                        Logger.error("[GoogleSheetsDetailed] Insert failed for (category=#{cat}, key=#{key}): #{inspect(changeset.errors)}")
+                        {ins, exist, e3, i1, miss, fetch_fail}
+                      end
+                  end
+              end
+
+            true ->
+              Logger.error("[GoogleSheetsDetailed] MISSING_VALUES range has no data: range=#{range_name} (category=#{cat}, key=#{key})")
+              {ins, exist, e3, i1, miss + 1, fetch_fail}
           end
       end
     end)
