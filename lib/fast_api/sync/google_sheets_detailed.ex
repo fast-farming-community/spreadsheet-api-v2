@@ -18,8 +18,10 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     - I4: Duplicates across main-table rows are intentional; first-found is used, no warning.
 
   Notes:
-    - Key parsing now also supports compact numeric ranges:
-      "…120" -> "...-1-20", "…2140" -> "...-21-40" (split last two digits).
+    - Key parsing supports compact numeric ranges:
+      "...120"  -> "...-1-20"
+      "...2140" -> "...-21-40" (split last two digits)
+      "...81100" -> "...-81-100" (special-case 5-digit tokens ending with 100)
   """
 
   alias FastApi.Repo
@@ -216,17 +218,17 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     |> Enum.map(&String.downcase/1)
     |> collapse_short_alpha_digit_s()
     |> Enum.flat_map(&split_compound_numeric_suffix/1)
-    # expand concatenated numeric ranges (e.g., "120" -> ["1","20"], "2140" -> ["21","40"])
     |> Enum.flat_map(&expand_concatenated_number/1)
     |> Enum.join("-")
   end
 
-  # Collapse patterns like ["t","4","s"] -> ["t4s"], ["cm","50"] -> ["cm50"]
-  # but DO NOT collapse long words like ["level","46"].
+  # Collapse patterns like ["t","4","s"] -> ["t4s"], ["cm","50"] -> ["cm50"].
+  # BUT only for a in the allowlist (to avoid "mf600" – we want "mf-600").
+  @collapse_allow ~w(t cm)
   defp collapse_short_alpha_digit_s(tokens), do: collapse_short_alpha_digit_s(tokens, [])
 
   defp collapse_short_alpha_digit_s([a, num, "s" | rest], acc) do
-    if byte_size(a) <= 2 and is_digits?(num) do
+    if a in @collapse_allow and is_digits?(num) do
       collapse_short_alpha_digit_s(rest, [a <> num <> "s" | acc])
     else
       collapse_short_alpha_digit_s([num, "s" | rest], [a | acc])
@@ -234,7 +236,7 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
   end
 
   defp collapse_short_alpha_digit_s([a, num | rest], acc) do
-    if byte_size(a) <= 2 and is_digits?(num) do
+    if a in @collapse_allow and is_digits?(num) do
       collapse_short_alpha_digit_s(rest, [a <> num | acc])
     else
       collapse_short_alpha_digit_s([num | rest], [a | acc])
@@ -254,12 +256,26 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
     end
   end
 
-  # Expand single numeric blocks with 3+ digits into two-number ranges by splitting last 2 digits.
-  # "120" -> ["1","20"], "2140" -> ["21","40"], "305" -> ["3","05"]  (preserve zeros)
+  # Expand numeric blocks:
+  # - if 5 digits and ends with "100" (e.g., "81100") -> ["81","100"]
+  # - else if 3+ digits -> split last 2 digits (e.g., "2140" -> ["21","40"], "120" -> ["1","20"])
+  # - otherwise leave as-is
   defp expand_concatenated_number(token) do
-    if Regex.match?(~r/^\d{3,}$/, token) do
-      {head, tail} = String.split_at(token, String.length(token) - 2)
-      [head, tail]
+    if Regex.match?(~r/^\d+$/, token) do
+      len = String.length(token)
+
+      cond do
+        len == 5 and String.ends_with?(token, "100") ->
+          {head, tail} = String.split_at(token, len - 3)
+          [head, tail]
+
+        len >= 3 ->
+          {head, tail} = String.split_at(token, len - 2)
+          [head, tail]
+
+        true ->
+          [token]
+      end
     else
       [token]
     end
@@ -430,7 +446,6 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
                     {ins + 1, exist, e3, i1, miss}
 
                   {:error, :constraint} ->
-                    # Treat as already present so a constraint race or pkey mismatch doesn't crash the job
                     {ins, exist + 1, e3, i1, miss}
 
                   {:error, changeset} ->
