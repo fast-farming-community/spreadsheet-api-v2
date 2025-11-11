@@ -21,6 +21,10 @@ defmodule FastApi.Sync.GW2API do
   @rl_interval_ms 1_000
   @rl_qps 2
 
+  # timeout log throttling (per-process)
+  @timeout_warn_limit 2        # warn for first 2 timeouts, then debug
+  @timeout_warn_cooldown_ms 5_000
+
   defp ensure_rl_table! do
     case :ets.info(@rl_table) do
       :undefined ->
@@ -119,9 +123,9 @@ defmodule FastApi.Sync.GW2API do
   defp now_ts(), do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
   defp mono_ms(), do: System.monotonic_time(:millisecond)
 
+  # --------- QUIET-SKIP WHEN PUBLIC HEALTH IS DOWN (5xx/maintenance) ----------
   @spec sync_items() :: :ok
   def sync_items do
-    # Quietly skip entire run if public endpoints are down with 5xx/maintenance.
     if Gw2Server.down?(:public) do
       :ok
     else
@@ -129,6 +133,7 @@ defmodule FastApi.Sync.GW2API do
         item_ids = get_item_ids() |> halt_if_disabled()
         commerce_item_ids = get_commerce_item_ids() |> halt_if_disabled()
 
+        # Quiet skip on upstream failure to avoid destructive delete
         if item_ids == [] or commerce_item_ids == [] do
           :ok
         else
@@ -171,7 +176,6 @@ defmodule FastApi.Sync.GW2API do
 
   @spec sync_prices() :: {:ok, %{updated: non_neg_integer, changed_ids: MapSet.t()}}
   def sync_prices do
-    # Quietly skip entire run if public endpoints are down.
     if Gw2Server.down?(:public) do
       {:ok, %{updated: 0, changed_ids: MapSet.new()}}
     else
@@ -379,6 +383,33 @@ defmodule FastApi.Sync.GW2API do
     scheme <> "://" <> host <> port_suffix <> path <> query
   end
 
+  # ------------- QUIET, THROTTLED TIMEOUT LOGGING ----------------
+  defp log_timeout(request) do
+    # If health says public is down, always debug
+    if Gw2Server.down?(:public) do
+      Logger.debug("[GW2Api] timeout #{req_url_string(request)}")
+    else
+      count = (Process.get(:gw2_timeout_count, 0) + 1)
+      last_warn_at = Process.get(:gw2_timeout_last_warn_at, 0)
+      now = mono_ms()
+
+      cond do
+        count <= @timeout_warn_limit and now - last_warn_at >= @timeout_warn_cooldown_ms ->
+          Logger.warning("[GW2Api] timeout")
+          Process.put(:gw2_timeout_last_warn_at, now)
+
+        count <= @timeout_warn_limit ->
+          # within cooldown window, keep it quiet
+          Logger.debug("[GW2Api] timeout (suppressed) #{req_url_string(request)}")
+
+        true ->
+          Logger.debug("[GW2Api] timeout #{req_url_string(request)}")
+      end
+
+      Process.put(:gw2_timeout_count, count)
+    end
+  end
+
   # --- JSON REQUEST (no retry) ---
   defp request_json(request) do
     case Finch.request(request, FastApi.FinchJobs) do
@@ -396,7 +427,7 @@ defmodule FastApi.Sync.GW2API do
         end
 
       {:error, %Mint.TransportError{reason: :timeout}} ->
-        Logger.warning("[GW2Api] timeout")
+        log_timeout(request)
         :error
 
       {:error, reason} ->
