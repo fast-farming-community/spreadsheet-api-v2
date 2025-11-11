@@ -416,9 +416,22 @@ defmodule FastApi.Sync.GoogleSheetsDetailed do
                   %Fast.DetailTable{}
                   |> Ecto.Changeset.cast(params, [:detail_feature_id, :key, :name, :range])
 
-                case Repo.insert(changeset) do
+                insert_result =
+                  try do
+                    Repo.insert(changeset)
+                  rescue
+                    e in Ecto.ConstraintError ->
+                      Logger.error("[GoogleSheetsDetailed] Insert constraint error for (category=#{cat}, key=#{key}): #{Exception.message(e)}")
+                      {:error, :constraint}
+                  end
+
+                case insert_result do
                   {:ok, _} ->
                     {ins + 1, exist, e3, i1, miss}
+
+                  {:error, :constraint} ->
+                    # Treat as already present so a constraint race or pkey mismatch doesn't crash the job
+                    {ins, exist + 1, e3, i1, miss}
 
                   {:error, changeset} ->
                     if has_unique_violation?(changeset) do
