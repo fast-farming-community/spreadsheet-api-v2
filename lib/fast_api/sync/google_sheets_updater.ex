@@ -159,7 +159,7 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     result
     |> process_response(tables, tier)
   end
-
+  
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt \\ 1)
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt)
        when attempt <= @backoff_attempts do
@@ -173,18 +173,16 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
       {:ok, resp} ->
         {:ok, resp}
 
-      # 400 -> bad ranges
-      {:error, %Tesla.Env{status: 400, body: body}} ->
-        Logger.error("[GoogleSheetsUpdater] 400 BAD_REQUEST on chunk #{idx}/#{total} pid=#{pid_label}; isolating invalid ranges… body=#{inspect(body)}")
+      # 400 -> bad ranges. Do NOT log body or a first error line; only log the final isolated names.
+      {:error, %Tesla.Env{status: 400}} ->
         bad = isolate_invalid_ranges(connection, ranges)
 
         case bad do
           [] ->
-            Logger.error("[GoogleSheetsUpdater] Could not isolate invalid ranges (chunk #{idx}/#{total}); treating as gsheets_error")
+            Logger.error("[GoogleSheetsUpdater] Sheets 400 BAD_REQUEST; could not isolate invalid ranges (chunk #{idx}/#{total})")
             {:error, {:gsheets_error, :bad_request}}
 
           bad_ranges ->
-            # Only log the missing/invalid names
             Logger.error("[GoogleSheetsUpdater] Missing/invalid named ranges (#{length(bad_ranges)}): #{inspect(bad_ranges)}")
             {:error, {:invalid_ranges, bad_ranges}}
         end
@@ -205,6 +203,7 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
+      # Other statuses (auth/permission/etc.). Short log; no chunk dump.
       {:error, %Tesla.Env{} = env} ->
         Logger.error("[GoogleSheetsUpdater] API error status=#{env.status} on chunk #{idx}/#{total} pid=#{pid_label}")
         {:error, {:gsheets_error, env.status}}
@@ -250,8 +249,6 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         isolate_invalid_ranges(connection, left) ++ isolate_invalid_ranges(connection, right)
 
       {:error, _} ->
-        # Unexpected error while isolating — return whole set as suspects,
-        # but the caller will log just the count and this trimmed list.
         ranges
     end
   end
