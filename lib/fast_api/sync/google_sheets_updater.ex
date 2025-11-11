@@ -173,10 +173,26 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
       {:ok, resp} ->
         {:ok, resp}
 
+      # 400 -> bad ranges
+      {:error, %Tesla.Env{status: 400, body: body}} ->
+        Logger.error("[GoogleSheetsUpdater] 400 BAD_REQUEST on chunk #{idx}/#{total} pid=#{pid_label}; isolating invalid ranges… body=#{inspect(body)}")
+        bad = isolate_invalid_ranges(connection, ranges)
+
+        case bad do
+          [] ->
+            Logger.error("[GoogleSheetsUpdater] Could not isolate invalid ranges (chunk #{idx}/#{total}); treating as gsheets_error")
+            {:error, {:gsheets_error, :bad_request}}
+
+          bad_ranges ->
+            # Only log the missing/invalid names
+            Logger.error("[GoogleSheetsUpdater] Missing/invalid named ranges (#{length(bad_ranges)}): #{inspect(bad_ranges)}")
+            {:error, {:invalid_ranges, bad_ranges}}
+        end
+
       {:error, %Tesla.Env{status: 429}} ->
         wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
         Logger.warning(
-          "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT_EXCEEDED; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})"
+          "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT; backoff #{wait}ms (#{attempt}/#{@backoff_attempts})"
         )
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
@@ -184,20 +200,60 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
       {:error, %Tesla.Env{status: status}} when status in 500..599 ->
         wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
         Logger.warning(
-          "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} #{status} SERVER_ERROR; backing off #{wait}ms (#{attempt}/#{@backoff_attempts})"
+          "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} #{status} SERVER_ERROR; backoff #{wait}ms (#{attempt}/#{@backoff_attempts})"
         )
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
-      {:error, _other} ->
-        Logger.error("[GoogleSheetsUpdater] API error on chunk #{idx}/#{total} (#{length(ranges)} ranges): #{inspect(ranges)}")
-        {:error, {:gsheets_error, ranges}}
+      {:error, %Tesla.Env{} = env} ->
+        Logger.error("[GoogleSheetsUpdater] API error status=#{env.status} on chunk #{idx}/#{total} pid=#{pid_label}")
+        {:error, {:gsheets_error, env.status}}
+
+      {:error, other} ->
+        Logger.error("[GoogleSheetsUpdater] API error on chunk #{idx}/#{total} pid=#{pid_label}: #{inspect(other)}")
+        {:error, {:gsheets_error, :unknown}}
     end
   end
 
   defp fetch_batch_with_backoff(_connection, _ranges, idx, total, pid_label, _attempt) do
     Logger.error("[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} backoff exhausted; treating as rate limited")
     {:error, :rate_limited}
+  end
+
+  defp call_batch(connection, ranges) do
+    GoogleApi.Sheets.V4.Api.Spreadsheets.sheets_spreadsheets_values_batch_get(
+      connection,
+      @spreadsheet_id,
+      ranges: ranges,
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "FORMATTED_STRING"
+    )
+  end
+
+  defp isolate_invalid_ranges(_connection, []), do: []
+
+  defp isolate_invalid_ranges(connection, [single]) do
+    case call_batch(connection, [single]) do
+      {:ok, _} -> []
+      {:error, %Tesla.Env{status: 400}} -> [single]
+      {:error, _} -> [single] # conservative — prefer surfacing the suspect
+    end
+  end
+
+  defp isolate_invalid_ranges(connection, ranges) do
+    case call_batch(connection, ranges) do
+      {:ok, _} ->
+        []
+
+      {:error, %Tesla.Env{status: 400}} ->
+        {left, right} = Enum.split(ranges, div(length(ranges) + 1, 2))
+        isolate_invalid_ranges(connection, left) ++ isolate_invalid_ranges(connection, right)
+
+      {:error, _} ->
+        # Unexpected error while isolating — return whole set as suspects,
+        # but the caller will log just the count and this trimmed list.
+        ranges
+    end
   end
 
   defp metadata_name(Fast.Table),       do: "main"
@@ -236,8 +292,13 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     end)
   end
 
-  defp process_response({:error, {:gsheets_error, ranges}}, _tables, _tier) do
-    Logger.error("[GoogleSheetsUpdater] Error while fetching spreadsheet data (ranges only): #{inspect(ranges)}")
+  defp process_response({:error, {:invalid_ranges, bad_ranges}}, _tables, _tier) do
+    _ = bad_ranges
+    []
+  end
+
+  defp process_response({:error, {:gsheets_error, status}}, _tables, _tier) do
+    Logger.error("[GoogleSheetsUpdater] Sheets error (status=#{inspect(status)}); skipping this chunk for this cycle.")
     []
   end
 
