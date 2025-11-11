@@ -43,20 +43,33 @@ if config_env() == :prod do
 
   config :fast_api, FastApi.Scheduler,
     overlap: false,
-    jobs: [
-      {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
-      # {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}},
-      {"*/5 * * * *", {FastApi.Sync.GoogleSheetsUpdater, :execute_cycle, []}},
-      {"@hourly", {FastApi.Sync.GoogleSheetsDetailed, :execute, []}},
-      {"@hourly", {FastApi.Auth, :delete_unverified, []}},
-      {"@hourly", {FastApi.Auth, :purge_expired_password_resets, []}},
-      {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
-      {"@hourly", {FastApi.Sync.Patreon, :clear_memberships, []}},
-      {"@hourly", {FastApi.Sync.Public, :execute, []}},
-      {"@daily",   {FastApi.Raffle, :refresh_items_from_character, []}},
-      {"0 3 1 * *",{FastApi.Raffle, :rollover_new_month, []}},
-      {"55 23 * * *", {FastApi.Raffle, :draw_current_month, []}}
-    ]
+    jobs: config :fast_api, FastApi.Scheduler,
+  overlap: false,
+  jobs: [
+    # ── Auth ───────────────────────────────────────────────────────────────────
+    {"17 * * * *", {FastApi.Auth, :delete_unverified, []}},
+    {"23 * * * *", {FastApi.Auth, :purge_expired_password_resets, []}},
+
+    # ── Raffle ─────────────────────────────────────────────────────────────────
+    {"@daily",     {FastApi.Raffle, :refresh_items_from_character, []}},
+    {"0 3 1 * *",  {FastApi.Raffle, :rollover_new_month, []}},
+    {"55 23 * * *",{FastApi.Raffle, :draw_current_month, []}},
+
+    # ── Sync.GW2API ────────────────────────────────────────────────────────────
+    {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},
+    # {"@daily",      {FastApi.Sync.GW2API, :sync_items, []}}, # kept commented
+
+    # ── Sync.GoogleSheetsDetailed / Updater ───────────────────────────────────
+    {"@hourly",     {FastApi.Sync.GoogleSheetsDetailed, :execute, []}},
+    {"*/5 * * * *", {FastApi.Sync.GoogleSheetsUpdater, :execute_cycle, []}},
+
+    # ── Sync.Patreon ──────────────────────────────────────────────────────────
+    {"*/2 * * * *", {FastApi.Sync.Patreon, :sync_memberships, []}},
+    {"31 * * * *",  {FastApi.Sync.Patreon, :clear_memberships, []}},
+
+    # ── Sync.Public ───────────────────────────────────────────────────────────
+    {"@hourly",  {FastApi.Sync.Public, :execute, []}}
+  ]
 
   config :fast_api, FastApi.Health.Gw2Server,
     base_url: System.get_env("GW2_API_BASE_URL") || "https://api.guildwars2.com",
