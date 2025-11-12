@@ -5,6 +5,7 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
   alias FastApi.Schemas.Fast
   alias GoogleApi.Sheets.V4.Model.ValueRange
 
+  import Ecto.Query
   require Logger
 
   @spreadsheet_id "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
@@ -15,6 +16,8 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
   @backoff_base_ms 400
 
   @type tier :: :free | :copper | :silver | :gold
+
+  # ----------------------------- PUBLIC API -----------------------------
 
   def execute_cycle() do
     now = DateTime.utc_now()
@@ -53,6 +56,8 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     end
   end
 
+  # ----------------------------- CONFIG HELPERS -----------------------------
+
   defp target_field(:gold),   do: :rows_gold
   defp target_field(:silver), do: :rows_silver
   defp target_field(:copper), do: :rows_copper
@@ -81,6 +86,8 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     end
   end
 
+  # ----------------------------- RETRY WRAPPER -----------------------------
+
   defp retry_execute(repo, tier, attempt) when attempt <= @max_retries do
     try do
       do_execute(repo, tier)
@@ -103,63 +110,124 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     do_execute(repo, tier)
   end
 
-  defp do_execute(repo, tier) do
-    list = Repo.all(repo)
-    len  = length(list)
+  # ----------------------------- CORE EXECUTION -----------------------------
 
-    chunks = list |> Enum.chunk_every(@batch_size) |> Enum.with_index()
+  defp do_execute(repo, tier) do
+    field = target_field(tier)
+
+    base_query =
+      from t in repo,
+        select: %{
+          id: t.id,
+          range: t.range,
+          name: t.name,
+          current: field(t, ^field)
+        }
+
+    rows = Repo.all(base_query)
+    _len = length(rows)
+
+    # Keep memory bounded: chunk, fetch, compare, write, drop.
+    chunks = rows |> Enum.chunk_every(@batch_size) |> Enum.with_index()
     total  = length(chunks)
 
     {:ok, token} = Goth.fetch(FastApi.Goth)
 
-    triples =
+    updated_total =
       chunks
       |> Task.async_stream(
-        fn chunk -> get_spreadsheet_tables(chunk, total, len, token.token, tier) end,
+        fn {tables, idx} ->
+          process_chunk(repo, field, tables, idx, total, token.token, tier)
+        end,
         max_concurrency: concurrency(),
         timeout: 120_000,
         ordered: false,
         on_timeout: :kill_task
       )
-      |> Enum.flat_map(fn
-        {:ok, res} -> res
-        {:exit, reason} ->
+      |> Enum.reduce(0, fn
+        {:ok, n}, acc -> acc + n
+        {:exit, reason}, acc ->
           Logger.error("[GoogleSheetsUpdater] Spreadsheet chunk failed (task exit): #{inspect(reason)}")
-          []
-      end)
-
-    updated_count =
-      triples
-      |> Enum.reduce(0, fn {table, field, json}, acc ->
-        current = Map.get(table, field)
-        if current != json do
-          cs = repo.changeset(table, %{field => json})
-          case Repo.update(cs) do
-            {:ok, _}    -> acc + 1
-            {:error, _} -> acc
-          end
-        else
           acc
-        end
       end)
 
     update_metadata!(repo, tier)
-    updated_count
+    updated_total
   end
 
-  defp get_spreadsheet_tables({tables, idx}, total, _total_ranges, bearer_token, tier) do
+  defp process_chunk(repo, field, tables, idx, total, bearer_token, tier) do
     connection = GoogleApi.Sheets.V4.Connection.new(bearer_token)
     pid_label  = inspect(self())
     Process.sleep(200)
 
     ranges = Enum.map(tables, & &1.range)
 
-    result = fetch_batch_with_backoff(connection, ranges, idx + 1, total, pid_label)
+    case fetch_batch_with_backoff(connection, ranges, idx + 1, total, pid_label) do
+      {:ok, response} ->
+        to_update = tables_vs_values_to_updates(response, tables, tier)
+        n = write_updates(repo, field, to_update)
+        # aggressively drop references held by this task
+        :erlang.garbage_collect(self())
+        n
 
-    result
-    |> process_response(tables, tier)
+      {:error, {:invalid_ranges, bad_ranges}} ->
+        _ = bad_ranges
+        0
+
+      {:error, {:gsheets_error, status}} ->
+        Logger.error("[GoogleSheetsUpdater] Sheets error (status=#{inspect(status)}); skipping this chunk for this cycle.")
+        0
+
+      {:error, :rate_limited} ->
+        Logger.warning("[GoogleSheetsUpdater] Rate limit/backoff exhausted for a chunk; skipping this chunk this cycle.")
+        0
+    end
   end
-  
+
+  # Build updates *only for changed rows* to keep memory and writes small.
+  # Input `tables` are maps: %{id, range, name, current}
+  # Returns list of {id, json_string}
+  defp tables_vs_values_to_updates(%{valueRanges: value_ranges} = _resp, tables, tier) do
+    _field = target_field(tier) # intent marker; not used directly
+
+    tables
+    |> Enum.zip(value_ranges || [])
+    |> Enum.reduce([], fn
+      {%{id: id, name: _name, range: _range, current: current_json},
+       %ValueRange{values: [headers | rows]}}, acc when is_list(headers) ->
+        headers_clean =
+          headers
+          |> Enum.map(&(to_string(&1) |> String.replace(~r/[\W_]+/, "")))
+
+        # Encode to binary immediately so we can compare strictly and GC iodata sooner
+        new_json =
+          rows
+          |> Enum.map(fn row -> headers_clean |> Enum.zip(row) |> Enum.into(%{}) end)
+          |> Jason.encode!()
+
+        if current_json != new_json do
+          [{id, new_json} | acc]
+        else
+          acc
+        end
+
+      {%{id: _id} = table, %ValueRange{values: []}}, _acc ->
+        log_and_raise(table, "empty values (no header row)", %{values: []})
+
+      {%{id: _id} = table, %ValueRange{values: nil}}, _acc ->
+        log_and_raise(table, "nil values (no data returned by API)", %{})
+
+      {%{id: _id} = table, %ValueRange{values: other}}, _acc ->
+        log_and_raise(table, "unexpected values shape", %{values: other})
+
+      {%{id: _id} = table, nil}, _acc ->
+        log_and_raise(table, "missing ValueRange for table (no response for this range)", %{})
+    end)
+    |> Enum.reverse()
+  end
+
+  # ----------------------------- SHEETS CALLS -----------------------------
+
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt \\ 1)
   defp fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt)
        when attempt <= @backoff_attempts do
@@ -173,7 +241,7 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
       {:ok, resp} ->
         {:ok, resp}
 
-      # 400 -> bad ranges. Do NOT log body or a first error line; only log the final isolated names.
+      # 400 -> bad ranges. Do NOT log body; isolate and log minimal names.
       {:error, %Tesla.Env{status: 400}} ->
         bad = isolate_invalid_ranges(connection, ranges)
 
@@ -203,7 +271,6 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
-      # Other statuses (auth/permission/etc.). Short log; no chunk dump.
       {:error, %Tesla.Env{} = env} ->
         Logger.error("[GoogleSheetsUpdater] API error status=#{env.status} on chunk #{idx}/#{total} pid=#{pid_label}")
         {:error, {:gsheets_error, env.status}}
@@ -253,55 +320,19 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     end
   end
 
-  defp metadata_name(Fast.Table),       do: "main"
-  defp metadata_name(Fast.DetailTable), do: "detail"
+  # ----------------------------- DB WRITES -----------------------------
 
-  defp process_response({:ok, response}, tables, tier) do
-    value_ranges = response.valueRanges || []
-    field = target_field(tier)
+  defp write_updates(_repo, _field, []), do: 0
 
-    tables
-    |> Enum.zip(value_ranges)
-    |> Enum.map(fn
-      {%_{} = table, %ValueRange{values: [headers | rows]}} when is_list(headers) ->
-        headers_clean =
-          headers
-          |> Enum.map(&(to_string(&1) |> String.replace(~r/[\W_]+/, "")))
+  defp write_updates(repo, field, pairs) when is_list(pairs) do
+    Enum.reduce(pairs, 0, fn {id, json}, acc ->
+      # Direct update without loading the struct; 1 row per call with small payload.
+      {count, _} =
+        from(r in repo, where: r.id == ^id)
+        |> Repo.update_all(set: [{field, json}])
 
-        json =
-          rows
-          |> Enum.map(fn row -> headers_clean |> Enum.zip(row) |> Enum.into(%{}) end)
-          |> Jason.encode!()
-
-        {table, field, json}
-
-      {table, %ValueRange{values: []}} ->
-        log_and_raise(table, "empty values (no header row)", %{values: []})
-
-      {table, %ValueRange{values: nil}} ->
-        log_and_raise(table, "nil values (no data returned by API)", %{})
-
-      {table, %ValueRange{values: other}} ->
-        log_and_raise(table, "unexpected values shape", %{values: other})
-
-      {table, nil} ->
-        log_and_raise(table, "missing ValueRange for table (no response for this range)", %{})
+      acc + count
     end)
-  end
-
-  defp process_response({:error, {:invalid_ranges, bad_ranges}}, _tables, _tier) do
-    _ = bad_ranges
-    []
-  end
-
-  defp process_response({:error, {:gsheets_error, status}}, _tables, _tier) do
-    Logger.error("[GoogleSheetsUpdater] Sheets error (status=#{inspect(status)}); skipping this chunk for this cycle.")
-    []
-  end
-
-  defp process_response({:error, :rate_limited}, _tables, _tier) do
-    Logger.warning("[GoogleSheetsUpdater] Rate limit/backoff exhausted for a chunk; skipping this chunk this cycle.")
-    []
   end
 
   defp update_metadata!(repo, tier) do
@@ -357,13 +388,30 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     end
   end
 
-  defp log_and_raise(table, reason, context) do
-    label = table_label(table)
+  # ----------------------------- LOGGING HELPERS -----------------------------
+
+  defp metadata_name(Fast.Table),       do: "main"
+  defp metadata_name(Fast.DetailTable), do: "detail"
+
+  defp log_and_raise(table_like, reason, context) do
+    label = table_label(table_like)
     Logger.error(
       "[GoogleSheetsUpdater] failed: #{reason} table=#{label} context=#{inspect(context, pretty: true, limit: :infinity, printable_limit: :infinity)}"
     )
 
     raise RuntimeError, "[GoogleSheetsUpdater] failed: #{reason} (#{label})"
+  end
+
+  # Accepts either a schema struct or our slim map
+  defp table_label(%{range: range, name: name, id: id}) do
+    parts =
+      []
+      |> then(fn acc -> if name,  do: ["name=#{name}"  | acc], else: acc end)
+      |> then(fn acc -> if id,    do: ["id=#{id}"      | acc], else: acc end)
+      |> then(fn acc -> if range, do: ["range=#{range}"| acc], else: acc end)
+      |> Enum.reverse()
+
+    if parts == [], do: inspect(%{id: id, name: name, range: range}), else: Enum.join(parts, " ")
   end
 
   defp table_label(table) do
