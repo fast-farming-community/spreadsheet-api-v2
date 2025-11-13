@@ -75,6 +75,7 @@ defmodule FastApi.Sync.GW2API do
     String.contains?(body, "API Temporarily disabled") or
       String.contains?(body, "Scheduled reactivation")
   end
+
   defp api_disabled?(_), do: false
 
   defp halt_if_disabled(:remote_disabled), do: throw(:gw2_disabled)
@@ -97,7 +98,9 @@ defmodule FastApi.Sync.GW2API do
 
   defp flags_lookup(id) do
     case :ets.info(@flags_cache_table) do
-      :undefined -> nil
+      :undefined ->
+        nil
+
       _ ->
         case :ets.lookup(@flags_cache_table, id) do
           [{^id, flags, ts}] -> {flags, ts}
@@ -143,9 +146,15 @@ defmodule FastApi.Sync.GW2API do
           all_rows =
             item_ids
             |> get_details(@items)
-            |> Enum.filter(fn item -> Map.has_key?(item, :id) and is_integer(item.id) end)
+            |> Enum.filter(fn item ->
+              case item["id"] || item[:id] do
+                id when is_integer(id) -> true
+                _ -> false
+              end
+            end)
             |> Enum.map(fn item ->
-              tradable? = MapSet.member?(tradable_set, item.id)
+              id = item["id"] || item[:id]
+              tradable? = MapSet.member?(tradable_set, id)
               to_item(item, tradable?)
             end)
             |> to_insert_rows(now)
@@ -165,7 +174,11 @@ defmodule FastApi.Sync.GW2API do
           end
 
           batch_upsert(all_rows)
-          Logger.info("[GW2Api] Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)")
+
+          Logger.info(
+            "[GW2Api] Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)"
+          )
+
           :ok
         end
       catch
@@ -214,7 +227,7 @@ defmodule FastApi.Sync.GW2API do
                     true -> {vendor, 0, 0}
                   end
                 else
-                  buy0  = buys  && Map.get(buys,  "unit_price")
+                  buy0 = buys && Map.get(buys, "unit_price")
                   sell0 = sells && Map.get(sells, "unit_price")
                   buy_v = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
                   sell_v = if is_nil(sell0), do: 0, else: sell0
@@ -318,11 +331,21 @@ defmodule FastApi.Sync.GW2API do
         case sheets_values_update_with_retry(connection, sheet_id, range, values) do
           {:ok, _response} ->
             dt = mono_ms() - t0
-            Logger.info("[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}")
+
+            Logger.info(
+              "[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}"
+            )
+
             :ok
-          {:error, %Tesla.Env{status: 503}} -> :ok
-          {:error, %Tesla.Env{}} -> :ok
-          _other -> :ok
+
+          {:error, %Tesla.Env{status: 503}} ->
+            :ok
+
+          {:error, %Tesla.Env{}} ->
+            :ok
+
+          _other ->
+            :ok
         end
       catch
         :gw2_disabled -> :ok
@@ -344,11 +367,11 @@ defmodule FastApi.Sync.GW2API do
       {:ok, list} -> list
       _ -> []
     end)
-    |> Enum.map(&keys_to_atoms/1)
   end
 
   defp get_item_ids do
     rl_wait("gw2:items")
+
     case Finch.build(:get, @items) |> request_json() do
       :remote_disabled -> :remote_disabled
       :error -> []
@@ -358,6 +381,7 @@ defmodule FastApi.Sync.GW2API do
 
   defp get_commerce_item_ids do
     rl_wait("gw2:prices")
+
     case Finch.build(:get, @prices) |> request_json() do
       :remote_disabled -> :remote_disabled
       :error -> []
@@ -368,13 +392,13 @@ defmodule FastApi.Sync.GW2API do
   # Reconstruct a readable URL from Finch.Request for logging
   defp req_url_string(%Finch.Request{} = r) do
     scheme = to_string(r.scheme || "https")
-    host   = r.host || "?"
-    path   = r.path || "/"
-    query  = if is_binary(r.query) and r.query != "", do: "?" <> r.query, else: ""
+    host = r.host || "?"
+    path = r.path || "/"
+    query = if is_binary(r.query) and r.query != "", do: "?" <> r.query, else: ""
 
     port_suffix =
       case {scheme, r.port} do
-        {"http", 80}   -> ""
+        {"http", 80} -> ""
         {"https", 443} -> ""
         {_, p} when is_integer(p) -> ":" <> Integer.to_string(p)
         _ -> ""
@@ -422,7 +446,7 @@ defmodule FastApi.Sync.GW2API do
       {:ok, %Finch.Response{status: _status, body: body}} ->
         case Jason.decode(body) do
           {:ok, decoded} when is_list(decoded) -> decoded
-          {:ok, decoded} when is_map(decoded)  -> [decoded]
+          {:ok, decoded} when is_map(decoded) -> [decoded]
           _ -> :error
         end
 
@@ -436,18 +460,40 @@ defmodule FastApi.Sync.GW2API do
     end
   end
 
-  defp keys_to_atoms(map) do
-    Enum.into(map, %{}, fn {key, value} -> {String.to_atom(key), value} end)
+  defp to_item(params, tradable) when is_map(params) do
+    attrs =
+      params
+      |> Enum.reduce(%{}, fn
+        {k, v}, acc when is_binary(k) ->
+          case safe_to_existing_atom(k) do
+            nil -> acc
+            atom_key -> Map.put(acc, atom_key, v)
+          end
+
+        {k, v}, acc when is_atom(k) ->
+          Map.put(acc, k, v)
+
+        _other, acc ->
+          acc
+      end)
+      |> Map.put(:tradable, tradable)
+
+    struct(Fast.Item, attrs)
   end
 
-  defp to_item(params, tradable) do
-    params
-    |> Map.put(:tradable, tradable)
-    |> then(&struct(Fast.Item, &1))
+  defp safe_to_existing_atom(k) when is_binary(k) do
+    try do
+      String.to_existing_atom(k)
+    rescue
+      ArgumentError -> nil
+    end
   end
+
+  defp safe_to_existing_atom(_), do: nil
 
   defp accountbound_only?(flags) when is_list(flags),
     do: Enum.any?(flags, &(&1 == "AccountBound"))
+
   defp accountbound_only?(_), do: false
 
   defp to_insert_rows(items, now) do
@@ -492,6 +538,7 @@ defmodule FastApi.Sync.GW2API do
     if misses != [] do
       rl_wait("gw2:items")
       result = get_details_chunk(misses, @items)
+
       result
       |> Enum.each(fn item ->
         case item do
@@ -518,6 +565,7 @@ defmodule FastApi.Sync.GW2API do
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
 
     rl_wait("gw2:prices")
+
     prices =
       case Finch.build(:get, req_prices) |> request_json() do
         :remote_disabled -> throw(:gw2_disabled)
@@ -543,7 +591,9 @@ defmodule FastApi.Sync.GW2API do
     :timer.sleep(:rand.uniform(400))
     req_url = "#{base_url}?ids=#{Enum.join(chunk, ",")}"
 
-    if String.contains?(base_url, "/v2/commerce/prices"), do: rl_wait("gw2:prices"), else: rl_wait("gw2:items")
+    if String.contains?(base_url, "/v2/commerce/prices"),
+      do: rl_wait("gw2:prices"),
+      else: rl_wait("gw2:items")
 
     result =
       Finch.build(:get, req_url)
