@@ -49,9 +49,9 @@ if config_env() == :prod do
     {"23 * * * *", {FastApi.Auth, :purge_expired_password_resets, []}},
 
     # Raffle
-    {"@daily",     {FastApi.Raffle, :refresh_items_from_character, []}},
-    {"0 3 1 * *",  {FastApi.Raffle, :rollover_new_month, []}},
-    {"55 23 * * *",{FastApi.Raffle, :draw_current_month, []}},
+    {"@daily",     {FastApi.Raffle.Raffle, :refresh_items_from_character, []}},
+    {"0 3 1 * *",  {FastApi.Raffle.Raffle, :rollover_new_month, []}},
+    {"55 23 * * *",{FastApi.Raffle.Raffle, :draw_current_month, []}},
 
     # Sync.GW2API
     {"*/5 * * * *", {FastApi.Sync.GW2API, :sync_sheet, []}},

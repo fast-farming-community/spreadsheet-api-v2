@@ -65,6 +65,7 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
 
     dt = System.monotonic_time(:millisecond) - t0
     total = Repo.aggregate(repo, :count, :id)
+
     Logger.info(
       "[GoogleSheetsUpdater] tier=#{tier_label(tier)} repo=#{repo_tag} updated=#{updated}/#{total} in #{fmt_ms(dt)}"
     )
@@ -107,6 +108,13 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
   defp retry_execute(repo, tier, attempt) when attempt <= @max_retries do
     try do
       do_execute(repo, tier)
+    rescue
+      e ->
+        Logger.error(
+          "[GoogleSheetsUpdater] unexpected exception on attempt #{attempt}: #{inspect(e)}"
+        )
+
+        0
     catch
       :exit, {:timeout, _} ->
         Logger.warning(
@@ -119,13 +127,6 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
       :exit, reason ->
         Logger.error(
           "[GoogleSheetsUpdater] unexpected exit on attempt #{attempt}: #{inspect(reason)}"
-        )
-
-        0
-    rescue
-      e ->
-        Logger.error(
-          "[GoogleSheetsUpdater] unexpected exception on attempt #{attempt}: #{inspect(e)}"
         )
 
         0

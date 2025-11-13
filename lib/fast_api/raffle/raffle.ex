@@ -1,4 +1,4 @@
-defmodule FastApi.Raffle do
+defmodule FastApi.Raffle.Raffle do
   @moduledoc """
   Monthly raffle with single raffles table + users.raffle_signed.
 
@@ -14,7 +14,7 @@ defmodule FastApi.Raffle do
   alias FastApi.GW2.Client, as: GW2
   require Logger
 
-  @cfg Application.compile_env(:fast_api, FastApi.Raffle, [])
+  @cfg Application.compile_env(:fast_api, FastApi.Raffle.Raffle, [])
   @api_key Keyword.get(@cfg, :api_key)
   @character Keyword.get(@cfg, :character)
 
@@ -36,7 +36,6 @@ defmodule FastApi.Raffle do
   end
 
   defp wrap_items(list) when is_list(list), do: %{"items" => list}
-  defp wrap_winners(list) when is_list(list), do: %{"winners" => list}
 
   # upsert by month_key to avoid unique violations on concurrent first call
   def current_row() do
@@ -129,7 +128,9 @@ defmodule FastApi.Raffle do
             |> Enum.reduce(%{}, fn
               %{"id" => id, "count" => c}, acc when is_integer(id) ->
                 Map.update(acc, id, max(c, 1), &(&1 + max(c, 1)))
-              _s, acc -> acc
+
+              _s, acc ->
+                acc
             end)
             |> Enum.map(fn {id, qty} -> %{"item_id" => id, "quantity" => qty} end)
 
@@ -191,6 +192,7 @@ defmodule FastApi.Raffle do
                 name = it["name"] || it[:name]
                 icon = it["icon"] || it[:icon]
                 rarity = it["rarity"] || it[:rarity]
+
                 if is_integer(id) do
                   Map.put(acc, id, %{name: name, icon: icon, rarity: rarity})
                 else
@@ -202,6 +204,7 @@ defmodule FastApi.Raffle do
               for it <- items do
                 id = it["item_id"]
                 meta = Map.get(imap, id, %{})
+
                 it
                 |> Map.put("name", meta[:name] || meta["name"])
                 |> Map.put("icon", meta[:icon] || meta["icon"])
@@ -258,6 +261,7 @@ defmodule FastApi.Raffle do
                 id = p["id"] || p[:id]
                 buy = get_in(p, ["buys", "unit_price"]) || get_in(p, [:buys, :unit_price])
                 sell = get_in(p, ["sells", "unit_price"]) || get_in(p, [:sells, :unit_price])
+
                 if is_integer(id), do: Map.put(acc, id, %{buy: buy, sell: sell}), else: acc
               end)
 
@@ -265,6 +269,7 @@ defmodule FastApi.Raffle do
               for it <- items do
                 id = it["item_id"]
                 pr = Map.get(pmap, id, %{})
+
                 it
                 |> Map.put("tp_buy", pr[:buy] || pr["buy"])
                 |> Map.put("tp_sell", pr[:sell] || pr["sell"])

@@ -1,6 +1,6 @@
 defmodule FastApiWeb.RaffleController do
   use FastApiWeb, :controller
-  alias FastApi.Raffle
+  alias FastApi.Raffle.Raffle
   alias FastApi.Repo
   alias FastApi.Schemas.Raffle, as: RaffleRow
   import Ecto.Query

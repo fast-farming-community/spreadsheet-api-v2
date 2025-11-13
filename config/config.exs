@@ -27,7 +27,7 @@ config :fast_api, FastApi.Mailer,
   adapter: Swoosh.Adapters.Sendmail,
   cmd_path: "/usr/sbin/sendmail"
 
-config :fast_api, FastApi.Raffle,
+config :fast_api, FastApi.Raffle.Raffle,
   api_key: System.get_env("RAFFLE_GW2_API_KEY"),
   character: System.get_env("RAFFLE_GW2_CHARACTER")
 
