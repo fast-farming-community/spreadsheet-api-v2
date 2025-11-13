@@ -9,7 +9,7 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
   require Logger
 
   @spreadsheet_id "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
-  @batch_size 80
+  @batch_size 300
 
   @max_retries 3
   @backoff_attempts 5
@@ -92,16 +92,12 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     "#{mins}:#{String.pad_leading(Integer.to_string(secs), 2, "0")} mins"
   end
 
-  defp concurrency() do
-    case System.get_env("GSHEETS_CONCURRENCY") do
-      nil -> 3
-      s when is_binary(s) ->
-        case Integer.parse(s) do
-          {n, _} when n >= 1 and n <= 10 -> n
-          _ -> 3
-        end
-    end
+  defp fmt_bytes(bytes) when is_integer(bytes) and bytes >= 0 do
+    mb = bytes / 1_048_576
+    "#{Float.round(mb, 2)} MB"
   end
+
+  defp concurrency(), do: 1
 
   # ----------------------------- RETRY WRAPPER -----------------------------
 
@@ -212,10 +208,25 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
 
     ranges = Enum.map(tables, & &1.range)
 
+    # --- memory snapshot BEFORE fetch/decode ---
+    vm_before   = :erlang.memory(:total)
+    proc_before = :erlang.process_info(self(), :memory) |> elem(1)
+
     case fetch_batch_with_backoff(connection, ranges, idx + 1, total, pid_label) do
       {:ok, response} ->
         to_update = tables_vs_values_to_updates(response, tables, tier)
         n = write_updates(repo, field, to_update)
+
+        # memory snapshot AFTER decode + DB write
+        vm_after   = :erlang.memory(:total)
+        proc_after = :erlang.process_info(self(), :memory) |> elem(1)
+
+        Logger.info(
+          "[GoogleSheetsUpdater] mem tier=#{tier_label(tier)} chunk=#{idx + 1}/#{total} " <>
+          "vm_total=#{fmt_bytes(vm_after)} vm_delta=#{fmt_bytes(max(vm_after - vm_before, 0))} " <>
+          "proc=#{fmt_bytes(proc_after)} proc_delta=#{fmt_bytes(max(proc_after - proc_before, 0))}"
+        )
+
         # aggressively drop references held by this task
         :erlang.garbage_collect(self())
         n
