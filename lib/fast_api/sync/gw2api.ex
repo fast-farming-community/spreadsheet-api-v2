@@ -13,8 +13,6 @@ defmodule FastApi.Sync.GW2API do
 
   @step 200
   @concurrency 8
-  @flags_cache_ttl_ms 86_400_000
-  @flags_cache_table :gw2_flags
 
   # --- lightweight ETS rate limiter: 2 req/sec per bucket ---
   @rl_table :gw2_rl
@@ -80,41 +78,6 @@ defmodule FastApi.Sync.GW2API do
 
   defp halt_if_disabled(:remote_disabled), do: throw(:gw2_disabled)
   defp halt_if_disabled(other), do: other
-
-  defp ensure_flags_cache! do
-    case :ets.info(@flags_cache_table) do
-      :undefined ->
-        try do
-          :ets.new(@flags_cache_table, [:named_table, :set, :public, read_concurrency: true])
-        catch
-          :error, :badarg -> :ok
-        end
-
-      _ -> :ok
-    end
-
-    :ok
-  end
-
-  defp flags_lookup(id) do
-    case :ets.info(@flags_cache_table) do
-      :undefined ->
-        nil
-
-      _ ->
-        case :ets.lookup(@flags_cache_table, id) do
-          [{^id, flags, ts}] -> {flags, ts}
-          _ -> nil
-        end
-    end
-  end
-
-  defp flags_insert(id, flags, ts) do
-    case :ets.info(@flags_cache_table) do
-      :undefined -> :ok
-      _ -> :ets.insert(@flags_cache_table, {id, flags, ts})
-    end
-  end
 
   defp fmt_ms(ms) do
     total = div(ms, 1000)
@@ -193,8 +156,6 @@ defmodule FastApi.Sync.GW2API do
       {:ok, %{updated: 0, changed_ids: MapSet.new()}}
     else
       try do
-        ensure_flags_cache!()
-
         items =
           Fast.Item
           |> where([i], i.tradable == true)
@@ -293,74 +254,65 @@ defmodule FastApi.Sync.GW2API do
   end
 
   def sync_sheet do
-    # memory snapshot before the 5-min GW2 job
-    FastApi.Debug.Memory.snapshot("gw2api:before_sync")
+    if Gw2Server.down?(:public) do
+      :ok
+    else
+      try do
+        t0 = mono_ms()
 
-    result =
-      if Gw2Server.down?(:public) do
-        :ok
-      else
-        try do
-          t0 = mono_ms()
+        {:ok, %{updated: updated_prices}} = sync_prices()
 
-          {:ok, %{updated: updated_prices}} = sync_prices()
+        items =
+          Fast.Item
+          |> select([i], %{
+            id: i.id,
+            name: i.name,
+            buy: i.buy,
+            sell: i.sell,
+            icon: i.icon,
+            rarity: i.rarity,
+            vendor_value: i.vendor_value
+          })
+          |> order_by([i], asc: i.id)
+          |> Repo.all()
 
-          items =
-            Fast.Item
-            |> select([i], %{
-              id: i.id,
-              name: i.name,
-              buy: i.buy,
-              sell: i.sell,
-              icon: i.icon,
-              rarity: i.rarity,
-              vendor_value: i.vendor_value
-            })
-            |> order_by([i], asc: i.id)
-            |> Repo.all()
+        total_rows = length(items)
 
-          total_rows = length(items)
+        {:ok, token} = Goth.fetch(FastApi.Goth)
+        connection = GoogleApi.Sheets.V4.Connection.new(token.token)
+        sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
 
-          {:ok, token} = Goth.fetch(FastApi.Goth)
-          connection = GoogleApi.Sheets.V4.Connection.new(token.token)
-          sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
+        values =
+          Enum.map(items, fn i ->
+            [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
+          end)
 
-          values =
-            Enum.map(items, fn i ->
-              [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
-            end)
+        range = "API!A4:G#{4 + total_rows}"
 
-          range = "API!A4:G#{4 + total_rows}"
+        case sheets_values_update_with_retry(connection, sheet_id, range, values) do
+          {:ok, _response} ->
+            dt = mono_ms() - t0
 
-          case sheets_values_update_with_retry(connection, sheet_id, range, values) do
-            {:ok, _response} ->
-              dt = mono_ms() - t0
-
-              Logger.info(
-                "[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} " <>
+            Logger.info(
+              "[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} " <>
                 "prices_updated=#{updated_prices} rows_written=#{total_rows}"
-              )
+            )
 
-              :ok
+            :ok
 
-            {:error, %Tesla.Env{status: 503}} ->
-              :ok
+          {:error, %Tesla.Env{status: 503}} ->
+            :ok
 
-            {:error, %Tesla.Env{}} ->
-              :ok
+          {:error, %Tesla.Env{}} ->
+            :ok
 
-            _other ->
-              :ok
-          end
-        catch
-          :gw2_disabled -> :ok
+          _other ->
+            :ok
         end
+      catch
+        :gw2_disabled -> :ok
       end
-
-    # memory snapshot after job finishes
-    FastApi.Debug.Memory.snapshot("gw2api:after_sync")
-
-    result
+    end
   end
 
   defp get_details(ids, base_url) do
@@ -531,50 +483,29 @@ defmodule FastApi.Sync.GW2API do
 
   # --- fetch for a chunk of prices ---
   defp fetch_prices_for_chunk(chunk) do
-    :timer.sleep(:rand.uniform(400)) # one-time jitter to de-sync 4 workers
+    :timer.sleep(:rand.uniform(400)) # one-time jitter to de-sync workers
 
-    now = mono_ms()
     ids = Enum.map(chunk, & &1.id)
 
-    misses =
-      ids
-      |> Enum.reject(fn id ->
-        case flags_lookup(id) do
-          {_, ts} -> now - ts < @flags_cache_ttl_ms
-          _ -> false
-        end
-      end)
-
-    if misses != [] do
-      rl_wait("gw2:items")
-      result = get_details_chunk(misses, @items)
-
-      result
-      |> Enum.each(fn item ->
-        case item do
-          %{"id" => id} ->
-            flags = Map.get(item, "flags", []) || []
-            flags_insert(id, flags, now)
-
-          _ ->
-            :ok
-        end
-      end)
-    end
+    # Fetch item details (for flags) just for this chunk,
+    # keep everything local so BEAM GC can reclaim it.
+    item_details =
+      get_details_chunk(ids, @items)
 
     flags_by_id =
-      ids
-      |> Enum.map(fn id ->
-        case flags_lookup(id) do
-          {flags, _ts} -> {id, flags}
-          _ -> {id, []}
-        end
+      item_details
+      |> Enum.reduce(%{}, fn
+        %{"id" => id, "flags" => flags}, acc when is_list(flags) ->
+          Map.put(acc, id, flags)
+
+        %{"id" => id}, acc ->
+          Map.put(acc, id, [])
+
+        _other, acc ->
+          acc
       end)
-      |> Map.new()
 
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
-
-    rl_wait("gw2:prices")
 
     prices =
       case Finch.build(:get, req_prices) |> request_json() do
@@ -585,8 +516,10 @@ defmodule FastApi.Sync.GW2API do
 
     prices_by_id =
       prices
-      |> Enum.filter(&match?(%{"id" => _}, &1))
-      |> Map.new(&{&1["id"], &1})
+      |> Enum.reduce(%{}, fn
+        %{"id" => id} = m, acc -> Map.put(acc, id, m)
+        _other, acc -> acc
+      end)
 
     for item <- chunk,
         price = Map.get(prices_by_id, item.id),
