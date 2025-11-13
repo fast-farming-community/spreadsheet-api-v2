@@ -156,10 +156,17 @@ defmodule FastApi.Sync.GW2API do
       {:ok, %{updated: 0, changed_ids: MapSet.new()}}
     else
       try do
+        # IMPORTANT: we now always load tradable flag from DB
+        # tradable = false  => accountbound_only
         items =
           Fast.Item
-          |> where([i], i.tradable == true)
-          |> select([i], %{id: i.id, vendor_value: i.vendor_value, buy_old: i.buy, sell_old: i.sell})
+          |> select([i], %{
+            id: i.id,
+            vendor_value: i.vendor_value,
+            buy_old: i.buy,
+            sell_old: i.sell,
+            tradable: i.tradable
+          })
           |> Repo.all()
 
         pairs =
@@ -179,20 +186,14 @@ defmodule FastApi.Sync.GW2API do
         {rows_changed, {_zeroed_bound_no_vendor, changed_ids}} =
           pairs
           |> Enum.map_reduce({0, MapSet.new()}, fn
-            {%{id: id, vendor_value: vendor, buy_old: buy_old, sell_old: sell_old},
-             %{"buys" => buys, "sells" => sells, "flags" => flags}}, {acc_zero, acc_ids} ->
+            # accountbound_only (tradable = false)
+            {%{id: id, vendor_value: vendor, buy_old: buy_old, sell_old: sell_old, tradable: false},
+             _price},
+            {acc_zero, acc_ids} ->
               {buy, sell, zero_inc} =
-                if accountbound_only?(flags) do
-                  cond do
-                    is_nil(vendor) or vendor == 0 -> {0, 0, 1}
-                    true -> {vendor, 0, 0}
-                  end
-                else
-                  buy0 = buys && Map.get(buys, "unit_price")
-                  sell0 = sells && Map.get(sells, "unit_price")
-                  buy_v = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
-                  sell_v = if is_nil(sell0), do: 0, else: sell0
-                  {buy_v, sell_v, 0}
+                cond do
+                  is_nil(vendor) or vendor == 0 -> {0, 0, 1}
+                  true -> {vendor, 0, 0}
                 end
 
               if buy != buy_old or sell != sell_old do
@@ -202,6 +203,27 @@ defmodule FastApi.Sync.GW2API do
                 {nil, {acc_zero + zero_inc, acc_ids}}
               end
 
+            # tradable items with a valid price payload
+            {%{id: id, vendor_value: vendor, buy_old: buy_old, sell_old: sell_old, tradable: true},
+             %{"buys" => buys, "sells" => sells}},
+            {acc_zero, acc_ids} ->
+              buy0 = buys && Map.get(buys, "unit_price")
+              sell0 = sells && Map.get(sells, "unit_price")
+
+              buy_v = if is_nil(buy0) or buy0 == 0, do: vendor || 0, else: buy0
+              sell_v = if is_nil(sell0), do: 0, else: sell0
+
+              buy = buy_v
+              sell = sell_v
+
+              if buy != buy_old or sell != sell_old do
+                row = %{id: id, buy: buy, sell: sell}
+                {row, {acc_zero, MapSet.put(acc_ids, id)}}
+              else
+                {nil, {acc_zero, acc_ids}}
+              end
+
+            # any other case (e.g. tradable=true but no price received) – skip
             _other, acc ->
               {nil, acc}
           end)
@@ -453,11 +475,6 @@ defmodule FastApi.Sync.GW2API do
 
   defp safe_to_existing_atom(_), do: nil
 
-  defp accountbound_only?(flags) when is_list(flags),
-    do: Enum.any?(flags, &(&1 == "AccountBound"))
-
-  defp accountbound_only?(_), do: false
-
   defp to_insert_rows(items, now) do
     items
     |> Stream.map(&Map.from_struct/1)
@@ -487,25 +504,9 @@ defmodule FastApi.Sync.GW2API do
 
     ids = Enum.map(chunk, & &1.id)
 
-    # Fetch item details (for flags) just for this chunk,
-    # keep everything local so BEAM GC can reclaim it.
-    item_details =
-      get_details_chunk(ids, @items)
-
-    flags_by_id =
-      item_details
-      |> Enum.reduce(%{}, fn
-        %{"id" => id, "flags" => flags}, acc when is_list(flags) ->
-          Map.put(acc, id, flags)
-
-        %{"id" => id}, acc ->
-          Map.put(acc, id, [])
-
-        _other, acc ->
-          acc
-      end)
-
     req_prices = "#{@prices}?ids=#{Enum.map_join(ids, ",", & &1)}"
+
+    rl_wait("gw2:prices")
 
     prices =
       case Finch.build(:get, req_prices) |> request_json() do
@@ -521,12 +522,10 @@ defmodule FastApi.Sync.GW2API do
         _other, acc -> acc
       end)
 
-    for item <- chunk,
-        price = Map.get(prices_by_id, item.id),
-        not is_nil(price) do
-      merged = Map.put(price, "flags", Map.get(flags_by_id, item.id, []))
-      {item, merged}
-    end
+    # we now always return a pair for every item in the chunk
+    Enum.map(chunk, fn item ->
+      {item, Map.get(prices_by_id, item.id)}
+    end)
   end
 
   # --- items/prices details for a chunk (no retry) ---
