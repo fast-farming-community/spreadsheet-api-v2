@@ -293,64 +293,74 @@ defmodule FastApi.Sync.GW2API do
   end
 
   def sync_sheet do
-    if Gw2Server.down?(:public) do
-      :ok
-    else
-      try do
-        t0 = mono_ms()
+    # memory snapshot before the 5-min GW2 job
+    FastApi.Debug.Memory.snapshot("gw2api:before_sync")
 
-        {:ok, %{updated: updated_prices}} = sync_prices()
+    result =
+      if Gw2Server.down?(:public) do
+        :ok
+      else
+        try do
+          t0 = mono_ms()
 
-        items =
-          Fast.Item
-          |> select([i], %{
-            id: i.id,
-            name: i.name,
-            buy: i.buy,
-            sell: i.sell,
-            icon: i.icon,
-            rarity: i.rarity,
-            vendor_value: i.vendor_value
-          })
-          |> order_by([i], asc: i.id)
-          |> Repo.all()
+          {:ok, %{updated: updated_prices}} = sync_prices()
 
-        total_rows = length(items)
+          items =
+            Fast.Item
+            |> select([i], %{
+              id: i.id,
+              name: i.name,
+              buy: i.buy,
+              sell: i.sell,
+              icon: i.icon,
+              rarity: i.rarity,
+              vendor_value: i.vendor_value
+            })
+            |> order_by([i], asc: i.id)
+            |> Repo.all()
 
-        {:ok, token} = Goth.fetch(FastApi.Goth)
-        connection = GoogleApi.Sheets.V4.Connection.new(token.token)
-        sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
+          total_rows = length(items)
 
-        values =
-          Enum.map(items, fn i ->
-            [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
-          end)
+          {:ok, token} = Goth.fetch(FastApi.Goth)
+          connection = GoogleApi.Sheets.V4.Connection.new(token.token)
+          sheet_id = "1WdwWxyP9zeJhcxoQAr-paMX47IuK6l5rqAPYDOA8mho"
 
-        range = "API!A4:G#{4 + total_rows}"
+          values =
+            Enum.map(items, fn i ->
+              [i.id, i.name, i.buy, i.sell, i.icon, i.rarity, i.vendor_value]
+            end)
 
-        case sheets_values_update_with_retry(connection, sheet_id, range, values) do
-          {:ok, _response} ->
-            dt = mono_ms() - t0
+          range = "API!A4:G#{4 + total_rows}"
 
-            Logger.info(
-              "[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} prices_updated=#{updated_prices} rows_written=#{total_rows}"
-            )
+          case sheets_values_update_with_retry(connection, sheet_id, range, values) do
+            {:ok, _response} ->
+              dt = mono_ms() - t0
 
-            :ok
+              Logger.info(
+                "[GW2Api] gw2.sync_sheet completed in #{fmt_ms(dt)} " <>
+                "prices_updated=#{updated_prices} rows_written=#{total_rows}"
+              )
 
-          {:error, %Tesla.Env{status: 503}} ->
-            :ok
+              :ok
 
-          {:error, %Tesla.Env{}} ->
-            :ok
+            {:error, %Tesla.Env{status: 503}} ->
+              :ok
 
-          _other ->
-            :ok
+            {:error, %Tesla.Env{}} ->
+              :ok
+
+            _other ->
+              :ok
+          end
+        catch
+          :gw2_disabled -> :ok
         end
-      catch
-        :gw2_disabled -> :ok
       end
-    end
+
+    # memory snapshot after job finishes
+    FastApi.Debug.Memory.snapshot("gw2api:after_sync")
+
+    result
   end
 
   defp get_details(ids, base_url) do
