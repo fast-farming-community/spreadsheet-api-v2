@@ -44,16 +44,32 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
     repo_tag = metadata_name(repo)
     t0 = System.monotonic_time(:millisecond)
 
-    try do
-      updated = retry_execute(repo, tier, 1)
-      dt = System.monotonic_time(:millisecond) - t0
-      total = Repo.aggregate(repo, :count, :id)
-      Logger.info("[GoogleSheetsUpdater] tier=#{tier_label(tier)} repo=#{repo_tag} updated=#{updated}/#{total} in #{fmt_ms(dt)}")
-    rescue
-      e ->
-        Logger.error("[GoogleSheetsUpdater] tier=#{tier_label(tier)} repo=#{repo_tag} failed: #{Exception.message(e)}")
-        reraise e, __STACKTRACE__
-    end
+    updated =
+      try do
+        retry_execute(repo, tier, 1)
+      rescue
+        e ->
+          Logger.error(
+            "[GoogleSheetsUpdater] tier=#{tier_label(tier)} repo=#{repo_tag} failed with exception: #{inspect(e)}"
+          )
+
+          0
+      catch
+        kind, reason ->
+          Logger.error(
+            "[GoogleSheetsUpdater] tier=#{tier_label(tier)} repo=#{repo_tag} failed with #{inspect(kind)}: #{inspect(reason)}"
+          )
+
+          0
+      end
+
+    dt = System.monotonic_time(:millisecond) - t0
+    total = Repo.aggregate(repo, :count, :id)
+    Logger.info(
+      "[GoogleSheetsUpdater] tier=#{tier_label(tier)} repo=#{repo_tag} updated=#{updated}/#{total} in #{fmt_ms(dt)}"
+    )
+
+    updated
   end
 
   # ----------------------------- CONFIG HELPERS -----------------------------
@@ -91,23 +107,37 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
   defp retry_execute(repo, tier, attempt) when attempt <= @max_retries do
     try do
       do_execute(repo, tier)
-    rescue
-      e in RuntimeError ->
-        reraise e, __STACKTRACE__
     catch
       :exit, {:timeout, _} ->
-        Logger.warning("[GoogleSheetsUpdater] fetch timeout (#{attempt}/#{@max_retries}); retrying…")
+        Logger.warning(
+          "[GoogleSheetsUpdater] fetch timeout (#{attempt}/#{@max_retries}); retrying…"
+        )
+
         Process.sleep(:timer.seconds(attempt * 2))
         retry_execute(repo, tier, attempt + 1)
 
-      :exit, _reason ->
-        :erlang.raise(:exit, :error, __STACKTRACE__)
+      :exit, reason ->
+        Logger.error(
+          "[GoogleSheetsUpdater] unexpected exit on attempt #{attempt}: #{inspect(reason)}"
+        )
+
+        0
+    rescue
+      e ->
+        Logger.error(
+          "[GoogleSheetsUpdater] unexpected exception on attempt #{attempt}: #{inspect(e)}"
+        )
+
+        0
     end
   end
 
-  defp retry_execute(repo, tier, _attempt) do
-    Logger.error("[GoogleSheetsUpdater] fetch timeout after #{@max_retries} attempts; giving up.")
-    do_execute(repo, tier)
+  defp retry_execute(_repo, _tier, _attempt) do
+    Logger.error(
+      "[GoogleSheetsUpdater] fetch timeout after #{@max_retries} attempts; giving up for this cycle."
+    )
+
+    0
   end
 
   # ----------------------------- CORE EXECUTION -----------------------------
@@ -145,9 +175,28 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         on_timeout: :kill_task
       )
       |> Enum.reduce(0, fn
-        {:ok, n}, acc -> acc + n
+        {:ok, n}, acc when is_integer(n) ->
+          acc + n
+
+        {:ok, other}, acc ->
+          Logger.error(
+            "[GoogleSheetsUpdater] Unexpected task result payload: #{inspect(other)}"
+          )
+
+          acc
+
         {:exit, reason}, acc ->
-          Logger.error("[GoogleSheetsUpdater] Spreadsheet chunk failed (task exit): #{inspect(reason)}")
+          Logger.error(
+            "[GoogleSheetsUpdater] Spreadsheet chunk failed (task exit): #{inspect(reason)}"
+          )
+
+          acc
+
+        other, acc ->
+          Logger.error(
+            "[GoogleSheetsUpdater] Unexpected task result tuple: #{inspect(other)}"
+          )
+
           acc
       end)
 
@@ -175,11 +224,17 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         0
 
       {:error, {:gsheets_error, status}} ->
-        Logger.error("[GoogleSheetsUpdater] Sheets error (status=#{inspect(status)}); skipping this chunk for this cycle.")
+        Logger.error(
+          "[GoogleSheetsUpdater] Sheets error (status=#{inspect(status)}); skipping this chunk for this cycle."
+        )
+
         0
 
       {:error, :rate_limited} ->
-        Logger.warning("[GoogleSheetsUpdater] Rate limit/backoff exhausted for a chunk; skipping this chunk this cycle.")
+        Logger.warning(
+          "[GoogleSheetsUpdater] Rate limit/backoff exhausted for a chunk; skipping this chunk this cycle."
+        )
+
         0
     end
   end
@@ -202,7 +257,9 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         # Encode to binary immediately so we can compare strictly and GC iodata sooner
         new_json =
           rows
-          |> Enum.map(fn row -> headers_clean |> Enum.zip(row) |> Enum.into(%{}) end)
+          |> Enum.map(fn row ->
+            headers_clean |> Enum.zip(row) |> Enum.into(%{})
+          end)
           |> Jason.encode!()
 
         if current_json != new_json do
@@ -211,17 +268,21 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
           acc
         end
 
-      {%{id: _id} = table, %ValueRange{values: []}}, _acc ->
-        log_and_raise(table, "empty values (no header row)", %{values: []})
+      {%{id: _id} = table, %ValueRange{values: []}}, acc ->
+        log_table_error(table, "empty values (no header row)", %{values: []})
+        acc
 
-      {%{id: _id} = table, %ValueRange{values: nil}}, _acc ->
-        log_and_raise(table, "nil values (no data returned by API)", %{})
+      {%{id: _id} = table, %ValueRange{values: nil}}, acc ->
+        log_table_error(table, "nil values (no data returned by API)", %{})
+        acc
 
-      {%{id: _id} = table, %ValueRange{values: other}}, _acc ->
-        log_and_raise(table, "unexpected values shape", %{values: other})
+      {%{id: _id} = table, %ValueRange{values: other}}, acc ->
+        log_table_error(table, "unexpected values shape", %{values: other})
+        acc
 
-      {%{id: _id} = table, nil}, _acc ->
-        log_and_raise(table, "missing ValueRange for table (no response for this range)", %{})
+      {%{id: _id} = table, nil}, acc ->
+        log_table_error(table, "missing ValueRange for table (no response for this range)", %{})
+        acc
     end)
     |> Enum.reverse()
   end
@@ -247,42 +308,61 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
 
         case bad do
           [] ->
-            Logger.error("[GoogleSheetsUpdater] Sheets 400 BAD_REQUEST; could not isolate invalid ranges (chunk #{idx}/#{total})")
+            Logger.error(
+              "[GoogleSheetsUpdater] Sheets 400 BAD_REQUEST; could not isolate invalid ranges (chunk #{idx}/#{total})"
+            )
+
             {:error, {:gsheets_error, :bad_request}}
 
           bad_ranges ->
-            Logger.error("[GoogleSheetsUpdater] Missing/invalid named ranges (#{length(bad_ranges)}): #{inspect(bad_ranges)}")
+            Logger.error(
+              "[GoogleSheetsUpdater] Missing/invalid named ranges (#{length(bad_ranges)}): #{inspect(bad_ranges)}"
+            )
+
             {:error, {:invalid_ranges, bad_ranges}}
         end
 
       {:error, %Tesla.Env{status: 429}} ->
         wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
+
         Logger.warning(
           "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} 429 RATE_LIMIT; backoff #{wait}ms (#{attempt}/#{@backoff_attempts})"
         )
+
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
       {:error, %Tesla.Env{status: status}} when status in 500..599 ->
         wait = trunc(:math.pow(2, attempt - 1) * @backoff_base_ms)
+
         Logger.warning(
           "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} #{status} SERVER_ERROR; backoff #{wait}ms (#{attempt}/#{@backoff_attempts})"
         )
+
         Process.sleep(wait)
         fetch_batch_with_backoff(connection, ranges, idx, total, pid_label, attempt + 1)
 
       {:error, %Tesla.Env{} = env} ->
-        Logger.error("[GoogleSheetsUpdater] API error status=#{env.status} on chunk #{idx}/#{total} pid=#{pid_label}")
+        Logger.error(
+          "[GoogleSheetsUpdater] API error status=#{env.status} on chunk #{idx}/#{total} pid=#{pid_label}"
+        )
+
         {:error, {:gsheets_error, env.status}}
 
       {:error, other} ->
-        Logger.error("[GoogleSheetsUpdater] API error on chunk #{idx}/#{total} pid=#{pid_label}: #{inspect(other)}")
+        Logger.error(
+          "[GoogleSheetsUpdater] API error on chunk #{idx}/#{total} pid=#{pid_label}: #{inspect(other)}"
+        )
+
         {:error, {:gsheets_error, :unknown}}
     end
   end
 
   defp fetch_batch_with_backoff(_connection, _ranges, idx, total, pid_label, _attempt) do
-    Logger.error("[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} backoff exhausted; treating as rate limited")
+    Logger.error(
+      "[GoogleSheetsUpdater] Chunk #{idx}/#{total} pid=#{pid_label} backoff exhausted; treating as rate limited"
+    )
+
     {:error, :rate_limited}
   end
 
@@ -373,7 +453,9 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         |> case do
           {:ok, _} -> :ok
           {:error, changeset} ->
-            Logger.error("[GoogleSheetsUpdater] metadata(#{name}) insert failed: #{inspect(changeset.errors)}")
+            Logger.error(
+              "[GoogleSheetsUpdater] metadata(#{name}) insert failed: #{inspect(changeset.errors)}"
+            )
         end
 
       %Fast.Metadata{} = row ->
@@ -383,7 +465,9 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
         |> case do
           {:ok, _} -> :ok
           {:error, changeset} ->
-            Logger.error("[GoogleSheetsUpdater] metadata(#{name}) update failed: #{inspect(changeset.errors)}")
+            Logger.error(
+              "[GoogleSheetsUpdater] metadata(#{name}) update failed: #{inspect(changeset.errors)}"
+            )
         end
     end
   end
@@ -393,13 +477,12 @@ defmodule FastApi.Sync.GoogleSheetsUpdater do
   defp metadata_name(Fast.Table),       do: "main"
   defp metadata_name(Fast.DetailTable), do: "detail"
 
-  defp log_and_raise(table_like, reason, context) do
+  defp log_table_error(table_like, reason, context) do
     label = table_label(table_like)
+
     Logger.error(
       "[GoogleSheetsUpdater] failed: #{reason} table=#{label} context=#{inspect(context, pretty: true, limit: :infinity, printable_limit: :infinity)}"
     )
-
-    raise RuntimeError, "[GoogleSheetsUpdater] failed: #{reason} (#{label})"
   end
 
   # Accepts either a schema struct or our slim map
