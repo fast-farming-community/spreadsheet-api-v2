@@ -42,6 +42,34 @@ defmodule FastApi.Sync.GW2API do
     )
   end
 
+  # --- ETS TABLE INSPECTION -------------------------------------
+  defp log_ets_tables(tag) do
+    wordsize = :erlang.system_info(:wordsize)
+
+    tables_info =
+      :ets.all()
+      |> Enum.map(fn tid ->
+        try do
+          info = :ets.info(tid)
+
+          name = info[:name]
+          size = info[:size] || 0
+          mem_words = info[:memory] || 0
+          mem_bytes = mem_words * wordsize
+          owner = info[:owner]
+
+          {name, mem_mb(mem_bytes), size, owner}
+        rescue
+          _ ->
+            {tid, 0.0, 0, :unknown}
+        end
+      end)
+      |> Enum.sort_by(fn {_name, mb, _size, _owner} -> -mb end)
+      |> Enum.take(10)
+
+    Logger.info("[GW2Api][mem][ets] #{tag} top=#{inspect(tables_info)}")
+  end
+
   defp ensure_rl_table! do
     case :ets.info(@rl_table) do
       :undefined ->
@@ -324,11 +352,13 @@ defmodule FastApi.Sync.GW2API do
     else
       try do
         log_mem("sync_sheet:start")
+        log_ets_tables("sync_sheet:start")
 
         t0 = mono_ms()
 
         {:ok, %{updated: updated_prices}} = sync_prices()
         log_mem("sync_sheet:after_sync_prices")
+        log_ets_tables("sync_sheet:after_sync_prices")
 
         items =
           Fast.Item
@@ -347,6 +377,7 @@ defmodule FastApi.Sync.GW2API do
         total_rows = length(items)
         Logger.info("[GW2Api] sync_sheet loaded #{total_rows} items for sheet update")
         log_mem("sync_sheet:after_load_items")
+        log_ets_tables("sync_sheet:after_load_items")
 
         {:ok, token} = Goth.fetch(FastApi.Goth)
         connection = GoogleApi.Sheets.V4.Connection.new(token.token)
@@ -369,29 +400,36 @@ defmodule FastApi.Sync.GW2API do
             )
 
             log_mem("sync_sheet:end_ok")
+            log_ets_tables("sync_sheet:end_ok")
+
             :erlang.garbage_collect(self())
             log_mem("sync_sheet:after_gc")
+            log_ets_tables("sync_sheet:after_gc")
 
             :ok
 
           {:error, %Tesla.Env{status: 503}} ->
             Logger.info("[GW2Api] sync_sheet got 503 from Sheets; skipping update")
             log_mem("sync_sheet:503")
+            log_ets_tables("sync_sheet:503")
             :ok
 
           {:error, %Tesla.Env{}} ->
             Logger.info("[GW2Api] sync_sheet Sheets error; skipping update")
             log_mem("sync_sheet:sheets_error")
+            log_ets_tables("sync_sheet:sheets_error")
             :ok
 
           _other ->
             Logger.info("[GW2Api] sync_sheet unexpected response; skipping update")
             log_mem("sync_sheet:unexpected_resp")
+            log_ets_tables("sync_sheet:unexpected_resp")
             :ok
         end
       catch
         :gw2_disabled ->
           log_mem("sync_sheet:gw2_disabled")
+          log_ets_tables("sync_sheet:gw2_disabled")
           :ok
       end
     end
