@@ -64,7 +64,7 @@ defmodule FastApiWeb.Telemetry do
         reporter_options: [buckets: @ms_buckets]
       ),
 
-      # feature/detail request counters stay defined (no exporter uses them now)
+      # feature/detail request counters stay defined (even if no exporter uses them)
       counter("fast_api.feature.request.count",
         tags: [:collection],
         description: "The amount of requests made to feature endpoints"
@@ -86,8 +86,6 @@ defmodule FastApiWeb.Telemetry do
 
   defp periodic_measurements do
     [
-      # A module, function and arguments to be invoked periodically.
-      # This function must call :telemetry.execute/3 and a metric must be added above.
       # {FastApiWeb, :count_users, []}
     ]
   end
