@@ -23,6 +23,25 @@ defmodule FastApi.Sync.GW2API do
   @timeout_warn_limit 2        # warn for first 2 timeouts, then debug
   @timeout_warn_cooldown_ms 5_000
 
+  # --- MEMORY LOGGING HELPERS -----------------------------------
+  defp mem_mb(bytes) when is_integer(bytes),
+    do: Float.round(bytes / 1_048_576, 2)
+
+  defp mem_mb(_), do: 0.0
+
+  defp log_mem(tag) do
+    m = :erlang.memory() |> Map.new()
+
+    Logger.info(
+      "[GW2Api][mem] #{tag} " <>
+        "total=#{mem_mb(m[:total])} MB " <>
+        "processes=#{mem_mb(m[:processes])} MB " <>
+        "binary=#{mem_mb(m[:binary])} MB " <>
+        "ets=#{mem_mb(m[:ets])} MB " <>
+        "proc_count=#{:erlang.system_info(:process_count)}"
+    )
+  end
+
   defp ensure_rl_table! do
     case :ets.info(@rl_table) do
       :undefined ->
@@ -96,11 +115,14 @@ defmodule FastApi.Sync.GW2API do
       :ok
     else
       try do
+        log_mem("sync_items:start")
+
         item_ids = get_item_ids() |> halt_if_disabled()
         commerce_item_ids = get_commerce_item_ids() |> halt_if_disabled()
 
         # Quiet skip on upstream failure to avoid destructive delete
         if item_ids == [] or commerce_item_ids == [] do
+          log_mem("sync_items:skip_upstream_empty")
           :ok
         else
           tradable_set = MapSet.new(commerce_item_ids)
@@ -122,6 +144,8 @@ defmodule FastApi.Sync.GW2API do
             end)
             |> to_insert_rows(now)
 
+          log_mem("sync_items:after_fetch_details")
+
           existing_ids =
             Fast.Item
             |> select([i], i.id)
@@ -142,10 +166,14 @@ defmodule FastApi.Sync.GW2API do
             "[GW2Api] Upserted #{length(all_rows)} GW2 items (#{MapSet.size(removed_ids)} removed)"
           )
 
+          log_mem("sync_items:end")
+
           :ok
         end
       catch
-        :gw2_disabled -> :ok
+        :gw2_disabled ->
+          log_mem("sync_items:gw2_disabled")
+          :ok
       end
     end
   end
@@ -156,8 +184,9 @@ defmodule FastApi.Sync.GW2API do
       {:ok, %{updated: 0, changed_ids: MapSet.new()}}
     else
       try do
+        log_mem("sync_prices:start")
+
         # IMPORTANT: we now always load tradable flag from DB
-        # tradable = false  => accountbound_only
         items =
           Fast.Item
           |> select([i], %{
@@ -168,6 +197,9 @@ defmodule FastApi.Sync.GW2API do
             tradable: i.tradable
           })
           |> Repo.all()
+
+        Logger.info("[GW2Api] sync_prices loaded #{length(items)} items from DB")
+        log_mem("sync_prices:after_load_items")
 
         pairs =
           items
@@ -182,6 +214,9 @@ defmodule FastApi.Sync.GW2API do
             {:ok, pairs} -> pairs
             _ -> []
           end)
+
+        Logger.info("[GW2Api] sync_prices got #{length(pairs)} item/price pairs")
+        log_mem("sync_prices:after_fetch_prices")
 
         {rows_changed, {_zeroed_bound_no_vendor, changed_ids}} =
           pairs
@@ -229,6 +264,10 @@ defmodule FastApi.Sync.GW2API do
           end)
 
         rows_changed = Enum.reject(rows_changed, &is_nil/1)
+
+        Logger.info("[GW2Api] sync_prices rows_changed=#{length(rows_changed)}")
+        log_mem("sync_prices:before_insert")
+
         now = now_ts()
 
         updated =
@@ -253,9 +292,13 @@ defmodule FastApi.Sync.GW2API do
             acc + count
           end)
 
+        log_mem("sync_prices:end")
+
         {:ok, %{updated: updated, changed_ids: changed_ids}}
       catch
-        :gw2_disabled -> {:ok, %{updated: 0, changed_ids: MapSet.new()}}
+        :gw2_disabled ->
+          log_mem("sync_prices:gw2_disabled")
+          {:ok, %{updated: 0, changed_ids: MapSet.new()}}
       end
     end
   end
@@ -280,9 +323,12 @@ defmodule FastApi.Sync.GW2API do
       :ok
     else
       try do
+        log_mem("sync_sheet:start")
+
         t0 = mono_ms()
 
         {:ok, %{updated: updated_prices}} = sync_prices()
+        log_mem("sync_sheet:after_sync_prices")
 
         items =
           Fast.Item
@@ -299,6 +345,8 @@ defmodule FastApi.Sync.GW2API do
           |> Repo.all()
 
         total_rows = length(items)
+        Logger.info("[GW2Api] sync_sheet loaded #{total_rows} items for sheet update")
+        log_mem("sync_sheet:after_load_items")
 
         {:ok, token} = Goth.fetch(FastApi.Goth)
         connection = GoogleApi.Sheets.V4.Connection.new(token.token)
@@ -320,19 +368,31 @@ defmodule FastApi.Sync.GW2API do
                 "prices_updated=#{updated_prices} rows_written=#{total_rows}"
             )
 
+            log_mem("sync_sheet:end_ok")
+            :erlang.garbage_collect(self())
+            log_mem("sync_sheet:after_gc")
+
             :ok
 
           {:error, %Tesla.Env{status: 503}} ->
+            Logger.info("[GW2Api] sync_sheet got 503 from Sheets; skipping update")
+            log_mem("sync_sheet:503")
             :ok
 
           {:error, %Tesla.Env{}} ->
+            Logger.info("[GW2Api] sync_sheet Sheets error; skipping update")
+            log_mem("sync_sheet:sheets_error")
             :ok
 
           _other ->
+            Logger.info("[GW2Api] sync_sheet unexpected response; skipping update")
+            log_mem("sync_sheet:unexpected_resp")
             :ok
         end
       catch
-        :gw2_disabled -> :ok
+        :gw2_disabled ->
+          log_mem("sync_sheet:gw2_disabled")
+          :ok
       end
     end
   end
