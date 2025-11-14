@@ -10,10 +10,7 @@ defmodule FastApiWeb.Telemetry do
   def init(_arg) do
     children = [
       # emits vm.* metrics
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
-
-      # Prometheus exporter (same module you already use)
-      {TelemetryMetricsPrometheus, [metrics: metrics()]}
+      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -39,7 +36,6 @@ defmodule FastApiWeb.Telemetry do
 
       # ------------------------------------
       # Database Metrics (use histograms)
-      # Ecto emits durations in :native. We convert to ms.
       # ------------------------------------
       distribution("fast_api.repo.query.total_time",
         unit: {:native, :millisecond},
@@ -63,11 +59,12 @@ defmodule FastApiWeb.Telemetry do
       ),
       distribution("fast_api.repo.query.idle_time",
         unit: {:native, :millisecond},
-        description: "The time the connection spent waiting before being checked out for the query",
+        description:
+          "The time the connection spent waiting before being checked out for the query",
         reporter_options: [buckets: @ms_buckets]
       ),
 
-      # feature/detail request counters stay as-is
+      # feature/detail request counters stay defined (no exporter uses them now)
       counter("fast_api.feature.request.count",
         tags: [:collection],
         description: "The amount of requests made to feature endpoints"

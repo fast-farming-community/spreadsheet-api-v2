@@ -1,78 +1,94 @@
-defmodule FastApi.MixProject do
-  use Mix.Project
+defmodule FastApiWeb.Telemetry do
+  use Supervisor
+  import Telemetry.Metrics
 
-  def project do
+  def start_link(arg) do
+    Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
+  end
+
+  @impl true
+  def init(_arg) do
+    children = [
+      # emits vm.* metrics
+      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  # Buckets for request/query durations (milliseconds)
+  @ms_buckets [5, 10, 20, 50, 100, 250, 500, 1_000, 2_000, 5_000]
+
+  def metrics do
     [
-      app: :fast_api,
-      version: "0.1.0",
-      elixir: "~> 1.14",
-      elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: Mix.compilers(),
-      start_permanent: Mix.env() == :prod,
-      aliases: aliases(),
-      deps: deps()
+      # ------------------------------------
+      # Phoenix Metrics (use histograms)
+      # ------------------------------------
+      distribution("phoenix.endpoint.stop.duration",
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @ms_buckets]
+      ),
+      distribution("phoenix.router_dispatch.stop.duration",
+        tags: [:route],
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @ms_buckets]
+      ),
+
+      # ------------------------------------
+      # Database Metrics (use histograms)
+      # ------------------------------------
+      distribution("fast_api.repo.query.total_time",
+        unit: {:native, :millisecond},
+        description: "The sum of the other measurements",
+        reporter_options: [buckets: @ms_buckets]
+      ),
+      distribution("fast_api.repo.query.decode_time",
+        unit: {:native, :millisecond},
+        description: "The time spent decoding the data received from the database",
+        reporter_options: [buckets: @ms_buckets]
+      ),
+      distribution("fast_api.repo.query.query_time",
+        unit: {:native, :millisecond},
+        description: "The time spent executing the query",
+        reporter_options: [buckets: @ms_buckets]
+      ),
+      distribution("fast_api.repo.query.queue_time",
+        unit: {:native, :millisecond},
+        description: "The time spent waiting for a database connection",
+        reporter_options: [buckets: @ms_buckets]
+      ),
+      distribution("fast_api.repo.query.idle_time",
+        unit: {:native, :millisecond},
+        description:
+          "The time the connection spent waiting before being checked out for the query",
+        reporter_options: [buckets: @ms_buckets]
+      ),
+
+      # feature/detail request counters stay defined (no exporter uses them now)
+      counter("fast_api.feature.request.count",
+        tags: [:collection],
+        description: "The amount of requests made to feature endpoints"
+      ),
+      counter("fast_api.detail.request.count",
+        tags: [:collection, :item],
+        description: "The amount of requests made to detail endpoints"
+      ),
+
+      # ------------------------------------
+      # VM Metrics (use gauges/last_value)
+      # ------------------------------------
+      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
+      last_value("vm.total_run_queue_lengths.total"),
+      last_value("vm.total_run_queue_lengths.cpu"),
+      last_value("vm.total_run_queue_lengths.io")
     ]
   end
 
-  # Configuration for the OTP application.
-  #
-  # Type `mix help compile.app` for more information.
-  def application do
+  defp periodic_measurements do
     [
-      mod: {FastApi.Application, []},
-      extra_applications: [:logger, :runtime_tools]
-    ]
-  end
-
-  # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_), do: ["lib"]
-
-  # Specifies your project dependencies.
-  #
-  # Type `mix help deps` for examples and options.
-  defp deps do
-    [
-      {:bcrypt_elixir, "~> 3.0"},
-      {:cors_plug, "~> 2.0"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:ecto_sql, "~> 3.6"},
-      {:gen_smtp, "~> 1.1"},
-      {:gettext, "~> 0.18"},
-      {:google_api_sheets, "~> 0.29.3"},
-      {:goth, "~> 1.3.0"},
-      {:guardian, "~> 2.0"},
-      {:jason, "~> 1.2"},
-      {:mock, "~> 0.3.0", only: :test},
-      {:phoenix, "~> 1.6.2"},
-      {:phoenix_ecto, "~> 4.4"},
-      {:phoenix_html, "~> 3.0"},
-      {:phoenix_live_view, "~> 0.17.5"},
-      {:phoenix_swoosh, "~> 1.0"},
-      {:plug_attack, "~> 0.4.2"},
-      {:plug_cowboy, "~> 2.5"},
-      {:postgrex, ">= 0.0.0"},
-      {:quantum, "~> 3.0"},
-      {:swoosh, "~> 1.3"},
-      {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_metrics_prometheus, "~> 1.1"},
-      {:telemetry_poller, "~> 1.0"}
-    ]
-  end
-
-  # Aliases are shortcuts or tasks specific to the current project.
-  # For example, to install project dependencies and perform other setup tasks, run:
-  #
-  #     $ mix setup
-  #
-  # See the documentation for `Mix` for more info on aliases.
-  defp aliases do
-    [
-      setup: ["deps.get", "ecto.setup"],
-      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
-      "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
+      # A module, function and arguments to be invoked periodically.
+      # This function must call :telemetry.execute/3 and a metric must be added above.
+      # {FastApiWeb, :count_users, []}
     ]
   end
 end
